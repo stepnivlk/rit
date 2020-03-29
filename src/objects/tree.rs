@@ -1,19 +1,84 @@
-use crate::objects::{Entry, Object, Storable};
+use crate::objects::{entry, Entry, Id, Object, Storable};
 use bytes::{BufMut, Bytes, BytesMut};
-use std::fmt;
+use indexmap::IndexMap;
+use std::{ffi::OsStr, fmt};
 
-const MODE: &[u8] = b"100644 ";
+#[derive(Debug)]
+pub enum Node {
+    Tree(Tree),
+    Entry(Entry),
+}
 
+#[derive(Debug)]
 pub struct Tree {
-    pub len: u64,
-    pub entries: Vec<Entry>,
+    pub nodes: IndexMap<String, Node>,
+    pub id: Option<Id>,
 }
 
 impl Tree {
-    pub fn new(mut entries: Vec<Entry>) -> Self {
+    pub fn build(mut entries: Vec<Entry>) -> Self {
         entries.sort_by(|a, b| a.path.cmp(&b.path));
+        let mut root = Tree::new();
 
-        Self { len: 0, entries }
+        for entry in entries {
+            let path = entry.path.clone();
+            let mut path = path.iter();
+            let name = path.next_back().unwrap();
+
+            root.add_entry(path, name, entry);
+        }
+
+        root
+    }
+
+    pub fn new() -> Self {
+        Self {
+            nodes: IndexMap::new(),
+            id: None,
+        }
+    }
+
+    pub fn traverse<C>(&mut self, consumer: C)
+    where
+        C: FnOnce(&mut Tree) + Copy,
+    {
+        for (_name, node) in &mut self.nodes {
+            if let Node::Tree(tree) = node {
+                tree.traverse(consumer);
+            }
+        }
+
+        consumer(self);
+    }
+
+    pub fn mode(&self) -> &[u8] {
+        entry::DIRECTORY_MODE
+    }
+
+    fn add_entry<'a>(
+        &mut self,
+        mut path: impl Iterator<Item = &'a OsStr>,
+        name: &'a OsStr,
+        entry: Entry,
+    ) {
+        match path.next() {
+            Some(part) => {
+                let part = part.to_str().unwrap();
+
+                if let Some(Node::Tree(tree)) = self.nodes.get_mut(part) {
+                    tree.add_entry(path, name, entry);
+                } else {
+                    let mut tree = Tree::new();
+                    tree.add_entry(path, name, entry);
+
+                    self.nodes.insert(part.to_string(), Node::Tree(tree));
+                }
+            }
+            None => {
+                let name = name.to_str().unwrap().to_string();
+                self.nodes.insert(name, Node::Entry(entry));
+            }
+        }
     }
 }
 
@@ -23,18 +88,41 @@ impl fmt::Display for Tree {
     }
 }
 
+struct NodeInfo<'a> {
+    name: String,
+    id: [u8; 20],
+    mode: &'a [u8],
+}
+
+impl<'a> NodeInfo<'a> {
+    fn new(name: &'a str, node: &'a Node) -> Self {
+        let name = format!("{}\0", name);
+
+        match node {
+            Node::Tree(tree) => Self {
+                name,
+                id: tree.id.as_ref().unwrap().as_bytes,
+                mode: tree.mode(),
+            },
+            Node::Entry(entry) => Self {
+                name,
+                id: entry.id.as_bytes,
+                mode: entry.mode(),
+            },
+        }
+    }
+}
+
 impl Object for Tree {
     fn data(&mut self) -> Bytes {
         let mut buf = BytesMut::new();
 
-        for entry in &self.entries {
-            let name = entry.path.file_name().unwrap().to_str().unwrap();
-            let name = format!("{}\0", name);
-            let id = entry.id.as_bytes;
+        for (name, node) in &self.nodes {
+            let node_info = NodeInfo::new(name, node);
 
-            buf.put(MODE);
-            buf.put(name.as_bytes());
-            buf.put(&id[..]);
+            buf.put(node_info.mode);
+            buf.put(node_info.name.as_bytes());
+            buf.put(&node_info.id[..]);
         }
 
         buf.freeze()

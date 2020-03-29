@@ -1,10 +1,11 @@
 use crate::objects;
 use libflate::zlib::Encoder;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
-use std::fs::{File, OpenOptions};
-use std::io::{prelude::*, Error};
-use std::path::Path;
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use std::{
+    fs::{File, OpenOptions},
+    io::{self, prelude::*},
+    path::Path,
+};
 
 pub struct Database<'a> {
     path: &'a Path,
@@ -15,7 +16,7 @@ impl<'a> Database<'a> {
         Self { path }
     }
 
-    pub fn store<O>(&self, mut object: O) -> Result<objects::Id, Error>
+    pub fn store<O>(&self, object: &mut O) -> Result<objects::Id, io::Error>
     where
         O: objects::Storable,
     {
@@ -26,9 +27,14 @@ impl<'a> Database<'a> {
         Ok(id)
     }
 
-    fn write_object<C: Read>(&self, id: &str, mut content: C) -> Result<(), Error> {
+    fn write_object<C: Read>(&self, id: &str, mut content: C) -> Result<(), io::Error> {
         let dir_path = self.path.join(&id[0..2]);
         let object_path = dir_path.join(&id[2..]);
+
+        if object_path.exists() {
+            return Ok(());
+        }
+
         let temp_path = dir_path.join(self.generate_temp_name());
 
         let file = match self.open_temp_file(&temp_path) {
@@ -48,7 +54,7 @@ impl<'a> Database<'a> {
         Ok(())
     }
 
-    fn open_temp_file(&self, path: &Path) -> Result<File, Error> {
+    fn open_temp_file(&self, path: &Path) -> Result<File, io::Error> {
         OpenOptions::new().write(true).create_new(true).open(path)
     }
 

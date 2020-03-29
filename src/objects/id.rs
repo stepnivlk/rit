@@ -1,5 +1,5 @@
 use sha1::Sha1;
-use std::io::prelude::*;
+use std::{fmt, io::prelude::*};
 
 #[derive(Clone)]
 pub struct Id {
@@ -26,5 +26,11 @@ impl Id {
             as_bytes: hasher.digest().bytes(),
             as_str: hasher.hexdigest(),
         }
+    }
+}
+
+impl fmt::Debug for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str)
     }
 }

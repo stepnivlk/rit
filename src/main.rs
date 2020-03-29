@@ -1,4 +1,3 @@
-use io::prelude::*;
 use io::Read;
 use std::{env, fs, io, path::Path};
 
@@ -13,6 +12,11 @@ use database::Database;
 mod errors;
 use errors::RitError;
 
+mod refs;
+use refs::Refs;
+
+mod lockfile;
+
 fn handle_init(path: &Path) -> Result<(), RitError> {
     let path = path.join(".git");
 
@@ -23,7 +27,7 @@ fn handle_init(path: &Path) -> Result<(), RitError> {
     Ok(())
 }
 
-fn get_env_data() -> Result<(String, String, String), RitError> {
+fn env_data() -> Result<(String, String, String), RitError> {
     let name = env::var("GIT_AUTHOR_NAME")?;
     let email = env::var("GIT_AUTHOR_EMAIL")?;
     let mut message = String::new();
@@ -36,39 +40,57 @@ fn handle_commit(path: &Path) -> Result<(), RitError> {
     let git_path = path.join(".git");
     let db_path = git_path.join("objects");
 
+    let path = path.to_path_buf();
+
     let workspace = Workspace::new(&path);
     let database = Database::new(&db_path);
+    let refs = Refs::new(&git_path);
 
     let entries: Vec<objects::Entry> = workspace
-        .list_files()?
+        .list_files(None)
+        .into_iter()
         .map(|entry| {
             let file = workspace.read_file(&entry).unwrap();
-            let blob = objects::Blob::new(file);
+            let stat = workspace.stat_file(&file);
 
-            let blob_id = database.store(blob).unwrap();
+            let mut blob = objects::Blob::new(file);
+
+            let blob_id = database.store(&mut blob).unwrap();
 
             objects::Entry {
                 id: blob_id,
                 path: entry,
+                stat,
             }
         })
         .collect();
 
-    let tree = objects::Tree::new(entries);
-    let tree_id = database.store(tree)?;
+    let mut root = objects::Tree::build(entries);
 
-    let (name, email, message) = get_env_data()?;
+    root.traverse(|tree| {
+        let id = database.store(tree).unwrap();
+        tree.id = Some(id);
+    });
+
+    let root_id = database.store(&mut root)?;
+
+    let parent = refs.read_head();
+    let (name, email, message) = env_data()?;
 
     let author = objects::Author::new(name, email);
 
-    let commit = objects::Commit::new(tree_id, author, &message);
-    let commit_id = database.store(commit)?;
+    let mut commit = objects::Commit::new(&parent, root_id, author, &message);
+    let commit_id = database.store(&mut commit)?;
+    refs.update_head(&commit_id)?;
 
-    let mut file = fs::File::create(git_path.join("HEAD"))?;
-    file.write_all(&commit_id.as_bytes)?;
+    let root_part = match parent {
+        Some(_) => "",
+        None => "(root-commit) ",
+    };
 
     println!(
-        "[(root-commit) {}] {}",
+        "[{}{}] {}",
+        root_part,
         commit_id.as_str,
         message.lines().next().unwrap()
     );

@@ -1,9 +1,11 @@
-use std::{env, error, fmt, io};
+use crate::refs::RefsError;
+use std::{env, fmt, io};
 
 #[derive(Debug)]
 pub enum RitError {
     Io,
     Env,
+    Internal,
 }
 
 impl fmt::Display for RitError {
@@ -11,13 +13,8 @@ impl fmt::Display for RitError {
         match self {
             RitError::Io => write!(f, "io failed"),
             RitError::Env => write!(f, "cannot read env"),
+            RitError::Internal => write!(f, "Internal error"),
         }
-    }
-}
-
-impl error::Error for RitError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
     }
 }
 
@@ -30,5 +27,11 @@ impl From<io::Error> for RitError {
 impl From<env::VarError> for RitError {
     fn from(_err: env::VarError) -> RitError {
         RitError::Env
+    }
+}
+
+impl From<RefsError> for RitError {
+    fn from(_err: RefsError) -> RitError {
+        RitError::Internal
     }
 }
