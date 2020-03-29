@@ -1,7 +1,9 @@
 use bytes::Bytes;
 use chrono::{DateTime, Local};
-use std::io::{prelude::*, Chain, Error};
-use std::{fmt, path::PathBuf};
+use std::{
+    fmt,
+    io::{prelude::*, Chain, Error},
+};
 
 pub mod id;
 pub use id::Id;
@@ -14,6 +16,9 @@ pub use tree::Tree;
 
 pub mod blob;
 pub use blob::Blob;
+
+pub mod entry;
+pub use entry::Entry;
 
 pub trait Object: fmt::Display {
     fn data(&mut self) -> Bytes;
@@ -43,11 +48,6 @@ pub trait Storable: Object {
 
         Ok(id)
     }
-}
-
-pub struct Entry {
-    pub id: Id,
-    pub path: PathBuf,
 }
 
 pub struct Author {

@@ -3,14 +3,16 @@ use bytes::{BufMut, Bytes, BytesMut};
 use std::fmt;
 
 pub struct Commit<'a> {
+    parent: &'a Option<String>,
     tree_id: Id,
     author: Author,
     message: &'a str,
 }
 
 impl<'a> Commit<'a> {
-    pub fn new(tree_id: Id, author: Author, message: &'a str) -> Self {
+    pub fn new(parent: &'a Option<String>, tree_id: Id, author: Author, message: &'a str) -> Self {
         Self {
+            parent,
             tree_id,
             author,
             message,
@@ -41,6 +43,12 @@ impl<'a> Object for Commit<'a> {
         let mut buf = BytesMut::new();
 
         buf.put(self.tree().as_bytes());
+
+        if let Some(parent) = self.parent {
+            let parent = format!("parent {}\n", parent);
+            buf.put(parent.as_bytes());
+        };
+
         buf.put(self.author().as_bytes());
         buf.put(self.commiter().as_bytes());
         buf.put(&b"\n"[..]);
