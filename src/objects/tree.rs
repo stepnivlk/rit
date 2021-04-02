@@ -17,7 +17,7 @@ pub struct Tree {
 
 impl Tree {
     pub fn build(mut entries: Vec<Entry>) -> Self {
-        entries.sort_by(|a, b| a.path.cmp(&b.path));
+        entries.sort_by(|a, b| a.path.as_os_str().cmp(&b.path.as_os_str()));
         let mut root = Tree::new();
 
         for entry in entries {
@@ -25,7 +25,7 @@ impl Tree {
             let mut path = path.iter();
             let name = path.next_back().unwrap();
 
-            root.add_entry(path, name, entry);
+            root.add_node(path, name, entry);
         }
 
         root
@@ -55,7 +55,7 @@ impl Tree {
         entry::DIRECTORY_MODE
     }
 
-    fn add_entry<'a>(
+    fn add_node<'a>(
         &mut self,
         mut path: impl Iterator<Item = &'a OsStr>,
         name: &'a OsStr,
@@ -66,10 +66,10 @@ impl Tree {
                 let part = part.to_str().unwrap();
 
                 if let Some(Node::Tree(tree)) = self.nodes.get_mut(part) {
-                    tree.add_entry(path, name, entry);
+                    tree.add_node(path, name, entry);
                 } else {
                     let mut tree = Tree::new();
-                    tree.add_entry(path, name, entry);
+                    tree.add_node(path, name, entry);
 
                     self.nodes.insert(part.to_string(), Node::Tree(tree));
                 }

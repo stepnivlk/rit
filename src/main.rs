@@ -74,16 +74,16 @@ fn handle_commit(path: &Path) -> Result<(), RitError> {
 
     let root_id = database.store(&mut root)?;
 
-    let parent = refs.read_head();
+    let parent_id = refs.read_head();
     let (name, email, message) = env_data()?;
 
     let author = objects::Author::new(name, email);
 
-    let mut commit = objects::Commit::new(&parent, root_id, author, &message);
+    let mut commit = objects::Commit::new(&parent_id, root_id, author, &message);
     let commit_id = database.store(&mut commit)?;
     refs.update_head(&commit_id)?;
 
-    let root_part = match parent {
+    let root_part = match parent_id {
         Some(_) => "",
         None => "(root-commit) ",
     };
