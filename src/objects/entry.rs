@@ -1,4 +1,4 @@
-use crate::{objects::Id, workspace::Stat};
+use crate::{id::Id, workspace::Stat};
 use std::path::PathBuf;
 
 const REGULAR_MODE: &[u8] = b"100644 ";

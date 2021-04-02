@@ -1,4 +1,7 @@
-use crate::objects::{entry, Entry, Id, Object, Storable};
+use crate::{
+    id::Id,
+    objects::{entry, Entry, Object, Storable},
+};
 use bytes::{BufMut, Bytes, BytesMut};
 use indexmap::IndexMap;
 use std::{ffi::OsStr, fmt};

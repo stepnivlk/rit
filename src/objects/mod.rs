@@ -5,9 +5,6 @@ use std::{
     io::{prelude::*, Chain, Error},
 };
 
-pub mod id;
-pub use id::Id;
-
 pub mod commit;
 pub use commit::Commit;
 
@@ -20,6 +17,8 @@ pub use blob::Blob;
 pub mod entry;
 pub use entry::Entry;
 
+use crate::id;
+
 pub trait Object: fmt::Display {
     fn data(&mut self) -> Bytes;
 
@@ -31,7 +30,7 @@ pub trait Object: fmt::Display {
 pub type Data<'a> = (&'a str, Chain<&'a [u8], &'a [u8]>);
 
 pub trait Storable: Object {
-    fn store<W>(&mut self, writer: W) -> Result<Id, Error>
+    fn store<W>(&mut self, writer: W) -> Result<id::Id, Error>
     where
         W: FnOnce(Data),
     {
@@ -40,7 +39,7 @@ pub trait Storable: Object {
         let header = self.header(data.len());
         let header = header.as_bytes();
 
-        let id = Id::new(header.clone().chain(data));
+        let id = id::OneOff::new(header.clone().chain(data));
 
         let data = header.chain(data);
 

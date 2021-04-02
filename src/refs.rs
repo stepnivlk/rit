@@ -1,6 +1,6 @@
 use crate::{
+    id::Id,
     lockfile::{LockError, Lockfile},
-    objects::Id,
 };
 use std::{
     fmt, fs,
@@ -40,8 +40,8 @@ impl<'a> Refs<'a> {
         let mut lockfile = Lockfile::new(self.head_path());
         lockfile.hold_for_update()?;
 
-        lockfile.write(&id.as_str)?;
-        lockfile.write("\n")?;
+        lockfile.write(&id.as_str.as_bytes())?;
+        lockfile.write("\n".as_bytes())?;
         lockfile.commit()?;
 
         Ok(())

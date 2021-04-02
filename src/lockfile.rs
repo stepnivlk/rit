@@ -37,7 +37,7 @@ pub struct Lockfile {
 impl Lockfile {
     pub fn new(mut path: PathBuf) -> Self {
         let file_path = path.clone();
-        path.set_extension(".lock");
+        path.set_extension("lock");
 
         Self {
             file_path,
@@ -56,11 +56,11 @@ impl Lockfile {
             .map_or(Err(LockError::Denied), |_| Ok(()))
     }
 
-    pub fn write(&mut self, content: &str) -> Result<(), LockError> {
+    pub fn write(&mut self, content: &[u8]) -> Result<(), LockError> {
         self.guard_stale_lock()?;
 
         if let Some(l) = self.lock.as_mut() {
-            l.write_all(content.as_bytes())?;
+            l.write_all(content)?;
         }
 
         Ok(())

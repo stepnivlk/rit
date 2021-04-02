@@ -17,6 +17,11 @@ use refs::Refs;
 
 mod lockfile;
 
+mod index;
+use index::Index;
+
+mod id;
+
 fn handle_init(path: &Path) -> Result<(), RitError> {
     let path = path.join(".git");
 
@@ -98,6 +103,30 @@ fn handle_commit(path: &Path) -> Result<(), RitError> {
     Ok(())
 }
 
+fn handle_add(path: &Path) -> Result<(), RitError> {
+    let path = path.to_path_buf();
+    let root_path = env::current_dir()?;
+    let git_path = root_path.join(".git");
+    let db_path = git_path.join("objects");
+    let index_path = git_path.join("index");
+
+    let workspace = Workspace::new(&&root_path);
+    let database = Database::new(&db_path);
+    let mut index = Index::new(index_path);
+
+    let data = workspace.read_file(&path)?;
+    let stat = workspace.stat_file(&data);
+
+    let mut blob = objects::Blob::new(data);
+
+    let blob_id = database.store(&mut blob).unwrap();
+
+    index.add(path, blob_id, stat);
+    index.write_updates()?;
+
+    Ok(())
+}
+
 fn main() -> Result<(), RitError> {
     let args: Vec<String> = env::args().collect();
 
@@ -124,6 +153,10 @@ fn main() -> Result<(), RitError> {
                 "init" => {
                     let path = Path::new(&args[2]);
                     handle_init(&path)?;
+                }
+                "add" => {
+                    let path = Path::new(&args[2]);
+                    handle_add(&path)?;
                 }
                 c => eprintln!("Command {} not supported", c),
             }
