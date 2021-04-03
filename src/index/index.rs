@@ -36,7 +36,11 @@ impl Index {
 
         self.write_header()?;
 
-        for (_, entry) in &self.entries {
+        let mut entries = self.entries.iter().collect::<Vec<_>>();
+
+        entries.sort_by_key(|entry| entry.0);
+
+        for (_, entry) in &entries {
             let data = &entry.data()[..];
 
             self.lockfile.write(&data[..])?;

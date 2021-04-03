@@ -1,5 +1,9 @@
 use io::Read;
-use std::{env, fs, io, path::Path};
+use std::{
+    env, fs, io,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 mod objects;
 
@@ -103,8 +107,7 @@ fn handle_commit(path: &Path) -> Result<(), RitError> {
     Ok(())
 }
 
-fn handle_add(path: &Path) -> Result<(), RitError> {
-    let path = path.to_path_buf();
+fn handle_add(paths: Vec<PathBuf>) -> Result<(), RitError> {
     let root_path = env::current_dir()?;
     let git_path = root_path.join(".git");
     let db_path = git_path.join("objects");
@@ -114,14 +117,17 @@ fn handle_add(path: &Path) -> Result<(), RitError> {
     let database = Database::new(&db_path);
     let mut index = Index::new(index_path);
 
-    let data = workspace.read_file(&path)?;
-    let stat = workspace.stat_file(&data);
+    for path in paths {
+        let data = workspace.read_file(&path)?;
+        let stat = workspace.stat_file(&data);
 
-    let mut blob = objects::Blob::new(data);
+        let mut blob = objects::Blob::new(data);
 
-    let blob_id = database.store(&mut blob).unwrap();
+        let blob_id = database.store(&mut blob).unwrap();
 
-    index.add(path, blob_id, stat);
+        index.add(path, blob_id, stat);
+    }
+
     index.write_updates()?;
 
     Ok(())
@@ -154,14 +160,28 @@ fn main() -> Result<(), RitError> {
                     let path = Path::new(&args[2]);
                     handle_init(&path)?;
                 }
-                "add" => {
-                    let path = Path::new(&args[2]);
-                    handle_add(&path)?;
-                }
+
                 c => eprintln!("Command {} not supported", c),
             }
         }
-        _ => eprintln!("Non-valid combination of commands"),
+        _ => {
+            let cmd = &args[1];
+            match &cmd[..] {
+                "add" => {
+                    let mut paths = vec![];
+
+                    for path in args[2..].iter() {
+                        let path = PathBuf::from_str(path).unwrap();
+
+                        paths.push(path);
+                    }
+
+                    handle_add(paths)?;
+                }
+
+                c => eprintln!("Command {} not supported", c),
+            }
+        }
     }
 
     Ok(())
