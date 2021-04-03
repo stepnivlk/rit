@@ -1,9 +1,5 @@
 use io::Read;
-use std::{
-    env, fs, io,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::{env, fs, io, path::Path};
 
 mod objects;
 
@@ -107,7 +103,7 @@ fn handle_commit(path: &Path) -> Result<(), RitError> {
     Ok(())
 }
 
-fn handle_add(paths: Vec<PathBuf>) -> Result<(), RitError> {
+fn handle_add(paths: Vec<&String>) -> Result<(), RitError> {
     let root_path = env::current_dir()?;
     let git_path = root_path.join(".git");
     let db_path = git_path.join("objects");
@@ -118,14 +114,20 @@ fn handle_add(paths: Vec<PathBuf>) -> Result<(), RitError> {
     let mut index = Index::new(index_path);
 
     for path in paths {
-        let data = workspace.read_file(&path)?;
-        let stat = workspace.stat_file(&data);
+        let path = fs::canonicalize(path)?;
 
-        let mut blob = objects::Blob::new(data);
+        let inner_paths = workspace.list_files(Some(&path));
 
-        let blob_id = database.store(&mut blob).unwrap();
+        for inner_path in inner_paths {
+            let data = workspace.read_file(&inner_path)?;
+            let stat = workspace.stat_file(&data);
 
-        index.add(path, blob_id, stat);
+            let mut blob = objects::Blob::new(data);
+
+            let blob_id = database.store(&mut blob).unwrap();
+
+            index.add(inner_path, blob_id, stat);
+        }
     }
 
     index.write_updates()?;
@@ -160,6 +162,11 @@ fn main() -> Result<(), RitError> {
                     let path = Path::new(&args[2]);
                     handle_init(&path)?;
                 }
+                "add" => {
+                    let paths = args[2..].iter().collect::<Vec<&String>>();
+
+                    handle_add(paths)?;
+                }
 
                 c => eprintln!("Command {} not supported", c),
             }
@@ -168,13 +175,7 @@ fn main() -> Result<(), RitError> {
             let cmd = &args[1];
             match &cmd[..] {
                 "add" => {
-                    let mut paths = vec![];
-
-                    for path in args[2..].iter() {
-                        let path = PathBuf::from_str(path).unwrap();
-
-                        paths.push(path);
-                    }
+                    let paths = args[2..].iter().collect::<Vec<&String>>();
 
                     handle_add(paths)?;
                 }

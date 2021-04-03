@@ -35,29 +35,27 @@ impl<'a> Workspace<'a> {
         Self { path }
     }
 
-    pub fn list_files(&self, dir: Option<&PathBuf>) -> Vec<PathBuf> {
-        let contents = dir.unwrap_or(self.path).read_dir().unwrap();
+    pub fn list_files(&self, path: Option<&PathBuf>) -> Vec<PathBuf> {
+        let path = path.unwrap_or(self.path);
 
-        let contents = contents
-            .filter(|entry| entry.is_ok())
-            .map(|entry| entry.unwrap().path())
-            .filter(|entry| match entry.file_name().and_then(|f| f.to_str()) {
-                Some(".git") => false,
-                Some(".gitignore") => false,
-                Some("target") => false,
-                _ => true,
-            })
-            .flat_map(|entry| {
-                if entry.is_dir() {
-                    self.list_files(Some(&entry))
-                } else {
-                    let entry = diff_paths(&entry, &self.path).unwrap();
+        if path.is_dir() {
+            path.read_dir()
+                .unwrap()
+                .filter(|entry| entry.is_ok())
+                .map(|entry| entry.unwrap().path())
+                .filter(|entry| match entry.file_name().and_then(|f| f.to_str()) {
+                    Some(".git") => false,
+                    Some(".gitignore") => false,
+                    Some("target") => false,
+                    _ => true,
+                })
+                .flat_map(|entry| self.list_files(Some(&path.join(entry))))
+                .collect()
+        } else {
+            let entry = diff_paths(&path, &self.path).unwrap();
 
-                    vec![entry]
-                }
-            });
-
-        contents.collect()
+            vec![entry]
+        }
     }
 
     pub fn read_file(&self, path: &PathBuf) -> Result<File, Error> {
