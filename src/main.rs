@@ -113,20 +113,22 @@ fn handle_add(paths: Vec<&String>) -> Result<(), RitError> {
     let database = Database::new(&db_path);
     let mut index = Index::new(index_path);
 
+    index.load_for_update()?;
+
     for path in paths {
         let path = fs::canonicalize(path)?;
 
-        let inner_paths = workspace.list_files(Some(&path));
+        let files = workspace.list_files(Some(&path));
 
-        for inner_path in inner_paths {
-            let data = workspace.read_file(&inner_path)?;
+        for file in files {
+            let data = workspace.read_file(&file)?;
             let stat = workspace.stat_file(&data);
 
             let mut blob = objects::Blob::new(data);
 
             let blob_id = database.store(&mut blob).unwrap();
 
-            index.add(inner_path, blob_id, stat);
+            index.add(file, blob_id, stat);
         }
     }
 

@@ -29,7 +29,7 @@ impl From<io::Error> for LockError {
 }
 
 pub struct Lockfile {
-    file_path: PathBuf,
+    pub file_path: PathBuf,
     lock_path: PathBuf,
     lock: Option<File>,
 }

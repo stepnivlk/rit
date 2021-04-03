@@ -1,4 +1,4 @@
-use crate::{lockfile::LockError, refs::RefsError};
+use crate::{index::IndexError, lockfile::LockError, refs::RefsError};
 use std::{env, fmt, io};
 
 #[derive(Debug)]
@@ -38,6 +38,12 @@ impl From<RefsError> for RitError {
 
 impl From<LockError> for RitError {
     fn from(_err: LockError) -> RitError {
+        RitError::Internal
+    }
+}
+
+impl From<IndexError> for RitError {
+    fn from(_err: IndexError) -> RitError {
         RitError::Internal
     }
 }

@@ -1,13 +1,24 @@
-use std::fmt;
+use std::convert::TryInto;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Id {
     pub as_str: String,
     pub as_bytes: [u8; 20],
 }
 
-impl fmt::Debug for Id {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str)
+impl Id {
+    pub fn parse(data: &[u8]) -> Self {
+        let bytes = data.try_into().unwrap();
+
+        let mut stringified = String::new();
+
+        for byte in data.iter() {
+            stringified.push_str(&format!("{:x?}", byte));
+        }
+
+        Self {
+            as_str: stringified,
+            as_bytes: bytes,
+        }
     }
 }

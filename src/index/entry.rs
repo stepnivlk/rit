@@ -1,3 +1,4 @@
+use super::{bytes_to_uint, bytes_to_uint16};
 use crate::{
     id,
     workspace::{Metadata, Stat},
@@ -11,7 +12,7 @@ const MAX_PATH_SIZE: usize = 0xfff;
 #[derive(Debug, Clone)]
 pub struct Entry {
     id: id::Id,
-    path: String,
+    pub path: String,
     metadata: Metadata,
     mode: u32,
     flags: usize,
@@ -36,6 +37,51 @@ impl Entry {
             } else {
                 MAX_PATH_SIZE
             },
+        }
+    }
+
+    pub fn parse(data: Vec<u8>) -> Self {
+        let ctime = bytes_to_uint(&data[..4]);
+        let ctime_nsec = bytes_to_uint(&data[4..8]);
+        let mtime = bytes_to_uint(&data[8..12]);
+        let mtime_nsec = bytes_to_uint(&data[12..16]);
+        let dev = bytes_to_uint(&data[16..20]);
+        let ino = bytes_to_uint(&data[20..24]);
+        let mode = bytes_to_uint(&data[24..28]);
+        let uid = bytes_to_uint(&data[28..32]);
+        let gid = bytes_to_uint(&data[32..36]);
+        let size = bytes_to_uint(&data[36..40]);
+        let id = id::Id::parse(&data[40..60]);
+        let flags = bytes_to_uint16(&data[60..62]);
+
+        let mut path: Vec<u8> = vec![];
+        let mut pos = 62;
+
+        while &data[pos] != &0x00 {
+            path.push(data[pos]);
+
+            pos = pos + 1;
+        }
+
+        let path = String::from_utf8_lossy(&path).to_string();
+
+        Self {
+            id,
+            path,
+            metadata: Metadata {
+                ctime: ctime.into(),
+                ctime_nsec: ctime_nsec.into(),
+                mtime: mtime.into(),
+                mtime_nsec: mtime_nsec.into(),
+                dev: dev.into(),
+                ino: ino.into(),
+                mode,
+                uid,
+                gid,
+                size: size.into(),
+            },
+            mode,
+            flags: flags.into(),
         }
     }
 
