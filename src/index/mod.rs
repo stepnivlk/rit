@@ -4,7 +4,7 @@ mod errors;
 mod index;
 
 use checksum::Checksum;
-use entry::Entry;
+pub use entry::Entry;
 pub use errors::IndexError;
 pub use index::Index;
 

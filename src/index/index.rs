@@ -37,6 +37,10 @@ impl Index {
     pub fn load_for_update(&mut self) -> Result<(), IndexError> {
         self.lockfile.hold_for_update()?;
 
+        self.load()
+    }
+
+    pub fn load(&mut self) -> Result<(), IndexError> {
         self.clear();
 
         let file = self.open_index_file();
@@ -57,23 +61,37 @@ impl Index {
     }
 
     pub fn add(&mut self, path: PathBuf, id: id::Id, stat: Stat) {
-        let pathname = path.as_os_str().to_str().unwrap().to_string();
-        let entry = Entry::new(pathname.clone(), id, stat);
+        let entry = Entry::new(path, id, stat);
 
-        self.entries.insert(pathname, entry);
+        self.entries.insert(entry.pathname.clone(), entry);
         self.is_changed = true;
     }
 
+    pub fn entries(&self) -> Vec<Entry> {
+        let mut entries = self
+            .entries
+            .iter()
+            // TODO: -clone
+            .map(|(_, entry)| entry.clone())
+            .collect::<Vec<_>>();
+
+        entries.sort_by_key(|entry| entry.pathname.clone());
+
+        entries
+    }
+
     pub fn write_updates(&mut self) -> Result<(), LockError> {
-        self.lockfile.hold_for_update()?;
+        if !self.is_changed {
+            self.lockfile.rollback()?;
+
+            return Ok(());
+        }
 
         self.write_header()?;
 
-        let mut entries = self.entries.iter().collect::<Vec<_>>();
+        let entries = self.entries();
 
-        entries.sort_by_key(|entry| entry.0);
-
-        for (_, entry) in &entries {
+        for entry in entries {
             let data = &entry.data()[..];
 
             self.lockfile.write(&data[..])?;
@@ -84,6 +102,8 @@ impl Index {
 
         self.lockfile.write(&id.as_bytes[..])?;
         self.lockfile.commit()?;
+
+        self.is_changed = false;
 
         Ok(())
     }
@@ -125,7 +145,7 @@ impl Index {
             }
 
             let entry = Entry::parse(entry);
-            self.entries.insert(entry.path.clone(), entry);
+            self.entries.insert(entry.pathname.clone(), entry);
         }
 
         Ok(())

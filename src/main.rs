@@ -44,31 +44,15 @@ fn env_data() -> Result<(String, String, String), RitError> {
 fn handle_commit(path: &Path) -> Result<(), RitError> {
     let git_path = path.join(".git");
     let db_path = git_path.join("objects");
+    let index_path = git_path.join("index");
 
-    let path = path.to_path_buf();
-
-    let workspace = Workspace::new(&path);
     let database = Database::new(&db_path);
     let refs = Refs::new(&git_path);
+    let mut index = Index::new(index_path);
 
-    let entries: Vec<objects::Entry> = workspace
-        .list_files(None)
-        .into_iter()
-        .map(|entry| {
-            let file = workspace.read_file(&entry).unwrap();
-            let stat = workspace.stat_file(&file);
+    index.load()?;
 
-            let mut blob = objects::Blob::new(file);
-
-            let blob_id = database.store(&mut blob).unwrap();
-
-            objects::Entry {
-                id: blob_id,
-                path: entry,
-                stat,
-            }
-        })
-        .collect();
+    let entries = index.entries();
 
     let mut root = objects::Tree::build(entries);
 
@@ -109,7 +93,7 @@ fn handle_add(paths: Vec<&String>) -> Result<(), RitError> {
     let db_path = git_path.join("objects");
     let index_path = git_path.join("index");
 
-    let workspace = Workspace::new(&&root_path);
+    let workspace = Workspace::new(&root_path);
     let database = Database::new(&db_path);
     let mut index = Index::new(index_path);
 

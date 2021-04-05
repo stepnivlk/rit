@@ -75,6 +75,15 @@ impl Lockfile {
         Ok(())
     }
 
+    pub fn rollback(&mut self) -> Result<(), LockError> {
+        self.guard_stale_lock()?;
+
+        fs::remove_file(self.lock_path.to_str().unwrap())?;
+        self.lock = None;
+
+        Ok(())
+    }
+
     fn guard_stale_lock(&self) -> Result<(), LockError> {
         match self.lock {
             Some(_) => Ok(()),

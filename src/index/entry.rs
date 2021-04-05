@@ -4,6 +4,7 @@ use crate::{
     workspace::{Metadata, Stat},
 };
 use bytes::{BufMut, Bytes, BytesMut};
+use std::path::PathBuf;
 
 const REGULAR_MODE: u32 = 0o100644;
 const EXECUTABLE_MODE: u32 = 0o100755;
@@ -11,21 +12,24 @@ const MAX_PATH_SIZE: usize = 0xfff;
 
 #[derive(Debug, Clone)]
 pub struct Entry {
-    id: id::Id,
-    pub path: String,
+    pub id: id::Id,
+    pub path: PathBuf,
+    pub pathname: String,
     metadata: Metadata,
-    mode: u32,
+    pub mode: u32,
     flags: usize,
 }
 
 impl Entry {
-    pub fn new(path: String, id: id::Id, stat: Stat) -> Self {
+    pub fn new(path: PathBuf, id: id::Id, stat: Stat) -> Self {
+        let pathname = path.as_os_str().to_str().unwrap().to_string();
         // TODO:
-        let path_size = path.len();
+        let path_size = pathname.len();
 
         Self {
             id,
             path,
+            pathname,
             metadata: stat.metadata,
             mode: if stat.is_executable {
                 EXECUTABLE_MODE
@@ -63,11 +67,12 @@ impl Entry {
             pos = pos + 1;
         }
 
-        let path = String::from_utf8_lossy(&path).to_string();
+        let pathname = String::from_utf8_lossy(&path).to_string();
 
         Self {
             id,
-            path,
+            path: PathBuf::from(pathname.clone()),
+            pathname,
             metadata: Metadata {
                 ctime: ctime.into(),
                 ctime_nsec: ctime_nsec.into(),
@@ -101,8 +106,8 @@ impl Entry {
         buf.put(&self.id.as_bytes[..]);
         buf.put_u16(self.flags as u16);
 
-        let path = format!("{}\0", self.path);
-        buf.put(path.as_bytes());
+        let pathname = format!("{}\0", self.pathname);
+        buf.put(pathname.as_bytes());
 
         while buf.len() % 8 != 0 {
             buf.put_u8(0);

@@ -14,9 +14,6 @@ pub use tree::Tree;
 pub mod blob;
 pub use blob::Blob;
 
-pub mod entry;
-pub use entry::Entry;
-
 use crate::id;
 
 pub trait Object: fmt::Display {
