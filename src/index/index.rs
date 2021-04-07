@@ -6,7 +6,7 @@ use crate::{
 };
 use bytes::{BufMut, BytesMut};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::{File, OpenOptions},
     io,
     path::PathBuf,
@@ -20,6 +20,7 @@ const ENTRY_MIN_SIZE: usize = 64;
 pub struct Index {
     lockfile: Lockfile,
     entries: HashMap<String, Entry>,
+    parents: HashMap<String, HashSet<String>>,
     id_builder: id::Additive,
     is_changed: bool,
 }
@@ -29,6 +30,7 @@ impl Index {
         Self {
             lockfile: Lockfile::new(path),
             entries: HashMap::new(),
+            parents: HashMap::new(),
             id_builder: id::Additive::new(),
             is_changed: false,
         }
@@ -63,7 +65,28 @@ impl Index {
     pub fn add(&mut self, path: PathBuf, id: id::Id, stat: Stat) {
         let entry = Entry::new(path, id, stat);
 
+        self.discard_conflicts(&entry);
+
+        let parents = entry.parents();
+
+        for parent in parents {
+            let parent_pathname: String = parent.to_string_lossy().into();
+
+            match self.parents.get_mut(&parent_pathname) {
+                Some(contents) => {
+                    contents.insert(entry.pathname.clone());
+                }
+                None => {
+                    let mut contents = HashSet::new();
+                    contents.insert(entry.pathname.clone());
+
+                    self.parents.insert(parent_pathname, contents);
+                }
+            };
+        }
+
         self.entries.insert(entry.pathname.clone(), entry);
+
         self.is_changed = true;
     }
 
@@ -106,6 +129,48 @@ impl Index {
         self.is_changed = false;
 
         Ok(())
+    }
+
+    fn discard_conflicts(&mut self, entry: &Entry) {
+        let parents = entry.parents();
+
+        for parent in parents {
+            self.remove_entry(parent.to_str().unwrap());
+        }
+
+        let set = self.parents.get_mut(&entry.pathname);
+
+        if let Some(set) = set {
+            for child in set.clone().iter() {
+                self.remove_entry(child);
+            }
+        };
+    }
+
+    fn remove_entry(&mut self, pathname: &str) {
+        let entry = self.entries.remove(pathname);
+
+        if entry.is_none() {
+            return;
+        }
+
+        let entry = entry.unwrap();
+
+        let parents = entry.parents();
+
+        for parent in parents {
+            let dirname = parent.to_str().unwrap();
+
+            let dir = self.parents.get_mut(dirname);
+
+            if let Some(dir) = dir {
+                dir.remove(&entry.pathname);
+
+                if dir.is_empty() {
+                    self.parents.remove(dirname);
+                }
+            }
+        }
     }
 
     fn read_header(&self, reader: &mut Checksum) -> Result<u32, IndexError> {
@@ -153,6 +218,7 @@ impl Index {
 
     fn clear(&mut self) {
         self.entries = HashMap::new();
+        self.parents = HashMap::new();
         self.id_builder = id::Additive::new();
         self.is_changed = false;
     }
@@ -172,5 +238,112 @@ impl Index {
         self.id_builder.add(&buf[..]);
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{id::Id, workspace::Metadata};
+
+    fn get_index() -> Index {
+        let tmp_path = std::env::current_dir().unwrap().join("tmp/");
+        let index_path = tmp_path.join("index");
+
+        Index::new(index_path)
+    }
+
+    fn get_id() -> Id {
+        Id::parse(&[
+            81, 232, 127, 146, 48, 252, 159, 201, 222, 122, 167, 182, 52, 254, 15, 207, 73, 234,
+            223, 164,
+        ])
+    }
+
+    fn get_stat() -> Stat {
+        Stat {
+            is_executable: false,
+            metadata: Metadata {
+                ctime: 1,
+                ctime_nsec: 2,
+                mtime: 3,
+                mtime_nsec: 4,
+                dev: 5,
+                ino: 6,
+                mode: 7,
+                uid: 8,
+                gid: 9,
+                size: 10,
+            },
+        }
+    }
+
+    fn map_entries<'a>(entries: &'a Vec<Entry>) -> Vec<&'a str> {
+        entries
+            .iter()
+            .map(|entry| &entry.pathname[..])
+            .collect::<Vec<&str>>()
+    }
+
+    #[test]
+    fn it_adds_a_single_file() {
+        let mut index = get_index();
+
+        index.add(PathBuf::from("alice.txt"), get_id(), get_stat());
+
+        let entries = index.entries();
+        let entries = map_entries(&entries);
+
+        assert_eq!(vec!["alice.txt"], entries);
+    }
+
+    #[test]
+    fn it_replaces_a_file_with_a_directory() {
+        let mut index = get_index();
+
+        index.add(PathBuf::from("alice.txt"), get_id(), get_stat());
+        index.add(PathBuf::from("bob.txt"), get_id(), get_stat());
+
+        index.add(PathBuf::from("alice.txt/nested.txt"), get_id(), get_stat());
+
+        let entries = index.entries();
+        let entries = map_entries(&entries);
+
+        assert_eq!(vec!["alice.txt/nested.txt", "bob.txt"], entries);
+    }
+
+    #[test]
+    fn it_replaces_a_directory_with_a_file() {
+        let mut index = get_index();
+
+        index.add(PathBuf::from("alice.txt"), get_id(), get_stat());
+        index.add(PathBuf::from("nested/bob.txt"), get_id(), get_stat());
+
+        index.add(PathBuf::from("nested"), get_id(), get_stat());
+
+        let entries = index.entries();
+        let entries = map_entries(&entries);
+
+        assert_eq!(vec!["alice.txt", "nested"], entries);
+    }
+
+    #[test]
+    fn it_recursively_replaces_a_directory_with_a_file() {
+        let mut index = get_index();
+
+        index.add(PathBuf::from("alice.txt"), get_id(), get_stat());
+        index.add(PathBuf::from("nested/bob.txt"), get_id(), get_stat());
+        index.add(
+            PathBuf::from("nested/inner/claire.txt"),
+            get_id(),
+            get_stat(),
+        );
+
+        index.add(PathBuf::from("nested"), get_id(), get_stat());
+
+        let entries = index.entries();
+        let entries = map_entries(&entries);
+
+        assert_eq!(vec!["alice.txt", "nested"], entries);
     }
 }

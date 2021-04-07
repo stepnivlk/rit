@@ -44,6 +44,22 @@ impl Entry {
         }
     }
 
+    pub fn parents(&self) -> Vec<PathBuf> {
+        let mut path = self.path.iter();
+        let mut expanded_parent_path = PathBuf::new();
+
+        path.next_back();
+
+        let mut parents = vec![];
+
+        for parent in path {
+            expanded_parent_path.push(parent);
+            parents.push(expanded_parent_path.clone());
+        }
+
+        parents
+    }
+
     pub fn parse(data: Vec<u8>) -> Self {
         let ctime = bytes_to_uint(&data[..4]);
         let ctime_nsec = bytes_to_uint(&data[4..8]);
