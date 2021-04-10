@@ -8,23 +8,23 @@ use std::{
 mod objects;
 
 mod workspace;
-use workspace::Workspace;
 
 mod database;
-use database::Database;
 
 mod errors;
 use errors::RitError;
 
 mod refs;
-use refs::Refs;
 
 mod lockfile;
 
 mod index;
-use index::{Index, IndexError};
+use index::IndexError;
 
 mod id;
+
+mod repository;
+use repository::Repository;
 
 fn handle_init(path: &Path) -> Result<(), RitError> {
     let path = path.join(".git");
@@ -47,34 +47,29 @@ fn env_data() -> Result<(String, String, String), RitError> {
 
 fn handle_commit(path: &Path) -> Result<(), RitError> {
     let git_path = path.join(".git");
-    let db_path = git_path.join("objects");
-    let index_path = git_path.join("index");
+    let mut repo = Repository::new(&git_path);
 
-    let database = Database::new(&db_path);
-    let refs = Refs::new(&git_path);
-    let mut index = Index::new(index_path);
+    repo.index.load()?;
 
-    index.load()?;
-
-    let entries = index.entries();
+    let entries = repo.index.entries();
 
     let mut root = objects::Tree::build(entries);
 
     root.traverse(|tree| {
-        let id = database.store(tree).unwrap();
+        let id = repo.database.store(tree).unwrap();
         tree.id = Some(id);
     });
 
-    let root_id = database.store(&mut root)?;
+    let root_id = repo.database.store(&mut root)?;
 
-    let parent_id = refs.read_head();
+    let parent_id = repo.refs.read_head();
     let (name, email, message) = env_data()?;
 
     let author = objects::Author::new(name, email);
 
     let mut commit = objects::Commit::new(&parent_id, root_id, author, &message);
-    let commit_id = database.store(&mut commit)?;
-    refs.update_head(&commit_id)?;
+    let commit_id = repo.database.store(&mut commit)?;
+    repo.refs.update_head(&commit_id)?;
 
     let root_part = match parent_id {
         Some(_) => "",
@@ -94,46 +89,41 @@ fn handle_commit(path: &Path) -> Result<(), RitError> {
 fn handle_add(paths: Vec<&String>) -> Result<(), RitError> {
     let root_path = env::current_dir()?;
     let git_path = root_path.join(".git");
-    let db_path = git_path.join("objects");
-    let index_path = git_path.join("index");
+    let mut repo = Repository::new(&git_path);
 
-    let workspace = Workspace::new(&root_path);
-    let database = Database::new(&db_path);
-    let mut index = Index::new(index_path);
-
-    index.load_for_update()?;
+    repo.index.load_for_update()?;
 
     let mut files: Vec<PathBuf> = vec![];
 
     for path in paths {
-        let path = workspace.expand_path(path);
+        let path = repo.workspace.expand_path(path);
         let path = path.map_err(|err| {
-            index.release_lock().unwrap();
+            repo.index.release_lock().unwrap();
 
             err
         })?;
 
-        for file in workspace.list_files(Some(&path)) {
+        for file in repo.workspace.list_files(Some(&path)) {
             files.push(file);
         }
     }
 
     for file in files {
-        let data = workspace.read_file(&file).map_err(|err| {
-            index.release_lock().unwrap();
+        let data = repo.workspace.read_file(&file).map_err(|err| {
+            repo.index.release_lock().unwrap();
 
             err
         })?;
-        let stat = workspace.stat_file(&data);
+        let stat = repo.workspace.stat_file(&data);
 
         let mut blob = objects::Blob::new(data);
 
-        let blob_id = database.store(&mut blob).unwrap();
+        let blob_id = repo.database.store(&mut blob).unwrap();
 
-        index.add(file, blob_id, stat);
+        repo.index.add(file, blob_id, stat);
     }
 
-    index.write_updates()?;
+    repo.index.write_updates()?;
 
     Ok(())
 }

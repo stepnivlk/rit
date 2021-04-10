@@ -4,15 +4,15 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{
     fs::{File, OpenOptions},
     io::{self, prelude::*},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
-pub struct Database<'a> {
-    path: &'a Path,
+pub struct Database {
+    path: PathBuf,
 }
 
-impl<'a> Database<'a> {
-    pub fn new(path: &'a Path) -> Self {
+impl Database {
+    pub fn new(path: PathBuf) -> Self {
         Self { path }
     }
 
