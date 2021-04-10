@@ -1,7 +1,7 @@
+use crate::errors::RitError;
 use pathdiff::diff_paths;
 use std::{
-    fs::{File, OpenOptions},
-    io::Error,
+    fs::{self, File, OpenOptions},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
 };
@@ -58,8 +58,17 @@ impl<'a> Workspace<'a> {
         }
     }
 
-    pub fn read_file(&self, path: &PathBuf) -> Result<File, Error> {
-        OpenOptions::new().read(true).append(true).open(path)
+    pub fn read_file(&self, path: &PathBuf) -> Result<File, RitError> {
+        OpenOptions::new()
+            .read(true)
+            .append(true)
+            .open(path)
+            .map_err(|err| match err.kind() {
+                std::io::ErrorKind::PermissionDenied => {
+                    RitError::PermissionDenied(path.to_string_lossy().to_string())
+                }
+                _ => RitError::Io(err),
+            })
     }
 
     pub fn stat_file(&self, file: &File) -> Stat {
@@ -80,6 +89,15 @@ impl<'a> Workspace<'a> {
                 gid: metadata.gid(),
                 size: metadata.size(),
             },
+        }
+    }
+
+    pub fn expand_path(&self, pathname: &str) -> Result<PathBuf, RitError> {
+        let path = fs::canonicalize(pathname);
+
+        match path {
+            Ok(path) => Ok(path),
+            Err(_) => Err(RitError::MissingFile(String::from(pathname))),
         }
     }
 }

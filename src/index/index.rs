@@ -131,6 +131,10 @@ impl Index {
         Ok(())
     }
 
+    pub fn release_lock(&mut self) -> Result<(), LockError> {
+        self.lockfile.rollback()
+    }
+
     fn discard_conflicts(&mut self, entry: &Entry) {
         let parents = entry.parents();
 

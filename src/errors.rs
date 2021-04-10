@@ -1,38 +1,36 @@
 use crate::{index::IndexError, lockfile::LockError, refs::RefsError};
-use std::{env, error::Error, fmt, io};
+use std::{env, fmt, io};
 
 #[derive(Debug)]
 pub enum RitError {
-    Io,
+    Io(io::Error),
     Env,
     Index(IndexError),
     Lock(LockError),
     Refs(RefsError),
-}
-
-impl Error for RitError {
-    fn description(&self) -> &str {
-        match &self {
-            RitError::Io => "IO failed",
-            RitError::Env => "ENV access failed",
-            _ => "Internal error",
-        }
-    }
+    MissingFile(String),
+    PermissionDenied(String),
 }
 
 impl fmt::Display for RitError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            RitError::Io => write!(f, "IO failed"),
+        match &self {
+            RitError::Io(err) => write!(f, "IO failed: {:?}", err),
             RitError::Env => write!(f, "ENV access failed"),
-            err => write!(f, "Internal error: {}", err),
+            RitError::MissingFile(pathname) => {
+                write!(f, "pathspec '{}' did not match any files", pathname)
+            }
+            RitError::PermissionDenied(pathname) => {
+                write!(f, "open('{}'): Permission denied", pathname)
+            }
+            err => write!(f, "Internal error: {:?}", err),
         }
     }
 }
 
 impl From<io::Error> for RitError {
-    fn from(_err: io::Error) -> RitError {
-        RitError::Io
+    fn from(err: io::Error) -> RitError {
+        RitError::Io(err)
     }
 }
 

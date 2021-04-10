@@ -1,10 +1,10 @@
 use crate::lockfile::LockError;
-use std::{error::Error, fmt, io};
+use std::{fmt, io};
 #[derive(Debug)]
 pub enum IndexError {
     Parse(String),
     Io,
-    Lock,
+    Lock(LockError),
 }
 
 impl fmt::Display for IndexError {
@@ -12,17 +12,7 @@ impl fmt::Display for IndexError {
         match self {
             IndexError::Parse(msg) => write!(f, "{}", msg),
             IndexError::Io => write!(f, "Cannot access the index file"),
-            IndexError::Lock => write!(f, "Cannot acquire the index lockfile"),
-        }
-    }
-}
-
-impl Error for IndexError {
-    fn description(&self) -> &str {
-        match &self {
-            IndexError::Parse(msg) => &msg,
-            IndexError::Io => "Cannot access the index file",
-            IndexError::Lock => "Cannot acquire the index lockfile",
+            IndexError::Lock(err) => write!(f, "{}", err),
         }
     }
 }
@@ -32,9 +22,8 @@ impl From<io::Error> for IndexError {
         IndexError::Io
     }
 }
-
 impl From<LockError> for IndexError {
-    fn from(_err: LockError) -> IndexError {
-        IndexError::Lock
+    fn from(err: LockError) -> IndexError {
+        IndexError::Lock(err)
     }
 }

@@ -8,7 +8,7 @@ use std::{
 #[derive(Debug)]
 pub enum LockError {
     StaleLock,
-    Denied,
+    Denied(String),
     Other(ErrorKind),
 }
 
@@ -16,7 +16,9 @@ impl fmt::Display for LockError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             LockError::StaleLock => write!(f, "Not holding lock"),
-            LockError::Denied => write!(f, "Could not acquire lock"),
+            LockError::Denied(pathname) => {
+                write!(f, "Unable to create '{}': File exists.", pathname)
+            }
             LockError::Other(_) => write!(f, "Something went wrong..."),
         }
     }
@@ -53,7 +55,12 @@ impl Lockfile {
             .create_new(true)
             .open(&self.lock_path)
             .map(|f| self.lock = Some(f))
-            .map_or(Err(LockError::Denied), |_| Ok(()))
+            .map_or(
+                Err(LockError::Denied(
+                    self.file_path.to_string_lossy().to_string(),
+                )),
+                |_| Ok(()),
+            )
     }
 
     pub fn write(&mut self, content: &[u8]) -> Result<(), LockError> {
