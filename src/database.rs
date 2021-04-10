@@ -1,4 +1,4 @@
-use crate::objects;
+use crate::{id, objects};
 use libflate::zlib::Encoder;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{
@@ -16,7 +16,7 @@ impl<'a> Database<'a> {
         Self { path }
     }
 
-    pub fn store<O>(&self, object: &mut O) -> Result<objects::Id, io::Error>
+    pub fn store<O>(&self, object: &mut O) -> Result<id::Id, io::Error>
     where
         O: objects::Storable,
     {

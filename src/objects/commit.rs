@@ -1,4 +1,7 @@
-use crate::objects::{Author, Id, Object, Storable};
+use crate::{
+    id::Id,
+    objects::{Author, Object, Storable},
+};
 use bytes::{BufMut, Bytes, BytesMut};
 use std::fmt;
 

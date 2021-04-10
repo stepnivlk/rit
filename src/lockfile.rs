@@ -8,7 +8,7 @@ use std::{
 #[derive(Debug)]
 pub enum LockError {
     StaleLock,
-    Denied,
+    Denied(String),
     Other(ErrorKind),
 }
 
@@ -16,7 +16,9 @@ impl fmt::Display for LockError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             LockError::StaleLock => write!(f, "Not holding lock"),
-            LockError::Denied => write!(f, "Could not acquire lock"),
+            LockError::Denied(pathname) => {
+                write!(f, "Unable to create '{}': File exists.", pathname)
+            }
             LockError::Other(_) => write!(f, "Something went wrong..."),
         }
     }
@@ -29,7 +31,7 @@ impl From<io::Error> for LockError {
 }
 
 pub struct Lockfile {
-    file_path: PathBuf,
+    pub file_path: PathBuf,
     lock_path: PathBuf,
     lock: Option<File>,
 }
@@ -37,7 +39,7 @@ pub struct Lockfile {
 impl Lockfile {
     pub fn new(mut path: PathBuf) -> Self {
         let file_path = path.clone();
-        path.set_extension(".lock");
+        path.set_extension("lock");
 
         Self {
             file_path,
@@ -53,14 +55,19 @@ impl Lockfile {
             .create_new(true)
             .open(&self.lock_path)
             .map(|f| self.lock = Some(f))
-            .map_or(Err(LockError::Denied), |_| Ok(()))
+            .map_or(
+                Err(LockError::Denied(
+                    self.file_path.to_string_lossy().to_string(),
+                )),
+                |_| Ok(()),
+            )
     }
 
-    pub fn write(&mut self, content: &str) -> Result<(), LockError> {
+    pub fn write(&mut self, content: &[u8]) -> Result<(), LockError> {
         self.guard_stale_lock()?;
 
         if let Some(l) = self.lock.as_mut() {
-            l.write_all(content.as_bytes())?;
+            l.write_all(content)?;
         }
 
         Ok(())
@@ -70,6 +77,15 @@ impl Lockfile {
         self.guard_stale_lock()?;
 
         fs::rename(&self.lock_path, &self.file_path)?;
+        self.lock = None;
+
+        Ok(())
+    }
+
+    pub fn rollback(&mut self) -> Result<(), LockError> {
+        self.guard_stale_lock()?;
+
+        fs::remove_file(self.lock_path.to_str().unwrap())?;
         self.lock = None;
 
         Ok(())

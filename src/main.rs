@@ -1,5 +1,9 @@
 use io::Read;
-use std::{env, fs, io, path::Path};
+use lockfile::LockError;
+use std::{
+    env, fs, io,
+    path::{Path, PathBuf},
+};
 
 mod objects;
 
@@ -16,6 +20,11 @@ mod refs;
 use refs::Refs;
 
 mod lockfile;
+
+mod index;
+use index::{Index, IndexError};
+
+mod id;
 
 fn handle_init(path: &Path) -> Result<(), RitError> {
     let path = path.join(".git");
@@ -39,31 +48,15 @@ fn env_data() -> Result<(String, String, String), RitError> {
 fn handle_commit(path: &Path) -> Result<(), RitError> {
     let git_path = path.join(".git");
     let db_path = git_path.join("objects");
+    let index_path = git_path.join("index");
 
-    let path = path.to_path_buf();
-
-    let workspace = Workspace::new(&path);
     let database = Database::new(&db_path);
     let refs = Refs::new(&git_path);
+    let mut index = Index::new(index_path);
 
-    let entries: Vec<objects::Entry> = workspace
-        .list_files(None)
-        .into_iter()
-        .map(|entry| {
-            let file = workspace.read_file(&entry).unwrap();
-            let stat = workspace.stat_file(&file);
+    index.load()?;
 
-            let mut blob = objects::Blob::new(file);
-
-            let blob_id = database.store(&mut blob).unwrap();
-
-            objects::Entry {
-                id: blob_id,
-                path: entry,
-                stat,
-            }
-        })
-        .collect();
+    let entries = index.entries();
 
     let mut root = objects::Tree::build(entries);
 
@@ -98,6 +91,102 @@ fn handle_commit(path: &Path) -> Result<(), RitError> {
     Ok(())
 }
 
+fn handle_add(paths: Vec<&String>) -> Result<(), RitError> {
+    let root_path = env::current_dir()?;
+    let git_path = root_path.join(".git");
+    let db_path = git_path.join("objects");
+    let index_path = git_path.join("index");
+
+    let workspace = Workspace::new(&root_path);
+    let database = Database::new(&db_path);
+    let mut index = Index::new(index_path);
+
+    index.load_for_update()?;
+
+    let mut files: Vec<PathBuf> = vec![];
+
+    for path in paths {
+        let path = workspace.expand_path(path);
+        let path = path.map_err(|err| {
+            index.release_lock().unwrap();
+
+            err
+        })?;
+
+        for file in workspace.list_files(Some(&path)) {
+            files.push(file);
+        }
+    }
+
+    for file in files {
+        let data = workspace.read_file(&file).map_err(|err| {
+            index.release_lock().unwrap();
+
+            err
+        })?;
+        let stat = workspace.stat_file(&data);
+
+        let mut blob = objects::Blob::new(data);
+
+        let blob_id = database.store(&mut blob).unwrap();
+
+        index.add(file, blob_id, stat);
+    }
+
+    index.write_updates()?;
+
+    Ok(())
+}
+
+fn handle_result(result: Result<(), RitError>) {
+    std::process::exit(match result {
+        Ok(_) => 0,
+        Err(err) => match err {
+            RitError::MissingFile(_) => {
+                eprintln!("fatal: {}", err);
+                128
+            }
+            RitError::PermissionDenied(_) => {
+                eprintln!("error: {}", err);
+                eprintln!("fatal: adding files failed");
+                128
+            }
+            RitError::Lock(err) => match err {
+                LockError::Denied(_) => {
+                    eprintln!("fatal: {}", err);
+                    128
+                }
+                _ => {
+                    eprintln!("fatal: {:?}", err);
+                    1
+                }
+            },
+            RitError::Index(err) => match err {
+                IndexError::Lock(lock_err @ LockError::Denied(_)) => {
+                    eprintln!(
+                        "fatal: {}
+                        
+Another rit process seems to be running in this repository.
+Please make sure all processes are terminated then try again.
+If it still fails, a jit process may have crashed in this
+repository earlier: remove the file manually to continue.",
+                        lock_err
+                    );
+                    128
+                }
+                _ => {
+                    eprintln!("fatal: {:?}", err);
+                    1
+                }
+            },
+            _ => {
+                eprintln!("fatal: {:?}", err);
+                1
+            }
+        },
+    });
+}
+
 fn main() -> Result<(), RitError> {
     let args: Vec<String> = env::args().collect();
 
@@ -125,10 +214,31 @@ fn main() -> Result<(), RitError> {
                     let path = Path::new(&args[2]);
                     handle_init(&path)?;
                 }
+                "add" => {
+                    let paths = args[2..].iter().collect::<Vec<&String>>();
+
+                    let result = handle_add(paths);
+
+                    handle_result(result);
+                }
+
                 c => eprintln!("Command {} not supported", c),
             }
         }
-        _ => eprintln!("Non-valid combination of commands"),
+        _ => {
+            let cmd = &args[1];
+            match &cmd[..] {
+                "add" => {
+                    let paths = args[2..].iter().collect::<Vec<&String>>();
+
+                    let result = handle_add(paths);
+
+                    handle_result(result);
+                }
+
+                c => eprintln!("Command {} not supported", c),
+            }
+        }
     }
 
     Ok(())

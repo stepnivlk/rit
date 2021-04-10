@@ -1,4 +1,8 @@
-use crate::objects::{entry, Entry, Id, Object, Storable};
+use crate::{
+    id::Id,
+    index::Entry,
+    objects::{Object, Storable},
+};
 use bytes::{BufMut, Bytes, BytesMut};
 use indexmap::IndexMap;
 use std::{ffi::OsStr, fmt};
@@ -16,8 +20,7 @@ pub struct Tree {
 }
 
 impl Tree {
-    pub fn build(mut entries: Vec<Entry>) -> Self {
-        entries.sort_by(|a, b| a.path.as_os_str().cmp(&b.path.as_os_str()));
+    pub fn build(entries: Vec<Entry>) -> Self {
         let mut root = Tree::new();
 
         for entry in entries {
@@ -51,8 +54,8 @@ impl Tree {
         consumer(self);
     }
 
-    pub fn mode(&self) -> &[u8] {
-        entry::DIRECTORY_MODE
+    pub fn mode(&self) -> u32 {
+        40000
     }
 
     fn add_node<'a>(
@@ -88,13 +91,13 @@ impl fmt::Display for Tree {
     }
 }
 
-struct NodeInfo<'a> {
+struct NodeInfo {
     name: String,
     id: [u8; 20],
-    mode: &'a [u8],
+    mode: String,
 }
 
-impl<'a> NodeInfo<'a> {
+impl<'a> NodeInfo {
     fn new(name: &'a str, node: &'a Node) -> Self {
         let name = format!("{}\0", name);
 
@@ -102,12 +105,12 @@ impl<'a> NodeInfo<'a> {
             Node::Tree(tree) => Self {
                 name,
                 id: tree.id.as_ref().unwrap().as_bytes,
-                mode: tree.mode(),
+                mode: format!("{} ", tree.mode()),
             },
             Node::Entry(entry) => Self {
                 name,
                 id: entry.id.as_bytes,
-                mode: entry.mode(),
+                mode: format!("{:o} ", entry.mode),
             },
         }
     }
@@ -120,7 +123,7 @@ impl Object for Tree {
         for (name, node) in &self.nodes {
             let node_info = NodeInfo::new(name, node);
 
-            buf.put(node_info.mode);
+            buf.put(node_info.mode.as_bytes());
             buf.put(node_info.name.as_bytes());
             buf.put(&node_info.id[..]);
         }
