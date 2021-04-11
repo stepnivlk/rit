@@ -29,10 +29,10 @@ impl From<LockError> for RefsError {
     }
 }
 
-pub struct Refs<'a>(&'a PathBuf);
+pub struct Refs(PathBuf);
 
-impl<'a> Refs<'a> {
-    pub fn new(path: &'a PathBuf) -> Self {
+impl Refs {
+    pub fn new(path: PathBuf) -> Self {
         Self(path)
     }
 

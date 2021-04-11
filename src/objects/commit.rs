@@ -8,12 +8,17 @@ use std::fmt;
 pub struct Commit<'a> {
     parent: &'a Option<String>,
     tree_id: Id,
-    author: Author,
+    author: Author<'a>,
     message: &'a str,
 }
 
 impl<'a> Commit<'a> {
-    pub fn new(parent: &'a Option<String>, tree_id: Id, author: Author, message: &'a str) -> Self {
+    pub fn new(
+        parent: &'a Option<String>,
+        tree_id: Id,
+        author: Author<'a>,
+        message: &'a str,
+    ) -> Self {
         Self {
             parent,
             tree_id,

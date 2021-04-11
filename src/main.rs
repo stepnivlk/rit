@@ -1,9 +1,7 @@
+use commands::CommandOpts;
 use io::Read;
 use lockfile::LockError;
-use std::{
-    env, fs, io,
-    path::{Path, PathBuf},
-};
+use std::{env, io};
 
 mod objects;
 
@@ -24,111 +22,32 @@ use index::IndexError;
 mod id;
 
 mod repository;
-use repository::Repository;
 
-fn handle_init(path: &Path) -> Result<(), RitError> {
-    let path = path.join(".git");
+mod commands;
 
-    for dir in &["objects", "refs"] {
-        fs::create_dir_all(path.join(dir))?;
+pub struct Session {
+    pub name: String,
+    pub email: String,
+}
+
+impl Session {
+    fn new() -> Result<Self, RitError> {
+        let name = env::var("GIT_AUTHOR_NAME")?;
+        let email = env::var("GIT_AUTHOR_EMAIL")?;
+
+        Ok(Self { name, email })
     }
 
-    Ok(())
-}
+    pub fn read_stdin(&self) -> Result<String, RitError> {
+        let mut text = String::new();
 
-fn env_data() -> Result<(String, String, String), RitError> {
-    let name = env::var("GIT_AUTHOR_NAME")?;
-    let email = env::var("GIT_AUTHOR_EMAIL")?;
-    let mut message = String::new();
-    io::stdin().read_to_string(&mut message)?;
+        io::stdin().read_to_string(&mut text)?;
 
-    Ok((name, email, message))
-}
-
-fn handle_commit(path: &Path) -> Result<(), RitError> {
-    let git_path = path.join(".git");
-    let mut repo = Repository::new(&git_path);
-
-    repo.index.load()?;
-
-    let entries = repo.index.entries();
-
-    let mut root = objects::Tree::build(entries);
-
-    root.traverse(|tree| {
-        let id = repo.database.store(tree).unwrap();
-        tree.id = Some(id);
-    });
-
-    let root_id = repo.database.store(&mut root)?;
-
-    let parent_id = repo.refs.read_head();
-    let (name, email, message) = env_data()?;
-
-    let author = objects::Author::new(name, email);
-
-    let mut commit = objects::Commit::new(&parent_id, root_id, author, &message);
-    let commit_id = repo.database.store(&mut commit)?;
-    repo.refs.update_head(&commit_id)?;
-
-    let root_part = match parent_id {
-        Some(_) => "",
-        None => "(root-commit) ",
-    };
-
-    println!(
-        "[{}{}] {}",
-        root_part,
-        commit_id.as_str,
-        message.lines().next().unwrap()
-    );
-
-    Ok(())
-}
-
-fn handle_add(paths: Vec<&String>) -> Result<(), RitError> {
-    let root_path = env::current_dir()?;
-    let git_path = root_path.join(".git");
-    let mut repo = Repository::new(&git_path);
-
-    repo.index.load_for_update()?;
-
-    let mut files: Vec<PathBuf> = vec![];
-
-    for path in paths {
-        let path = repo.workspace.expand_path(path);
-        let path = path.map_err(|err| {
-            repo.index.release_lock().unwrap();
-
-            err
-        })?;
-
-        for file in repo.workspace.list_files(Some(&path)) {
-            files.push(file);
-        }
+        Ok(text)
     }
-
-    for file in files {
-        let data = repo.workspace.read_file(&file).map_err(|err| {
-            repo.index.release_lock().unwrap();
-
-            err
-        })?;
-        let stat = repo.workspace.stat_file(&data);
-
-        let mut blob = objects::Blob::new(data);
-
-        let blob_id = repo.database.store(&mut blob).unwrap();
-
-        repo.index.add(file, blob_id, stat);
-    }
-
-    repo.index.write_updates()?;
-
-    Ok(())
 }
 
-fn handle_result(result: Result<(), RitError>) {
+fn exit(result: Result<(), RitError>) {
     std::process::exit(match result {
         Ok(_) => 0,
         Err(err) => match err {
@@ -177,59 +96,15 @@ repository earlier: remove the file manually to continue.",
     });
 }
 
-fn main() -> Result<(), RitError> {
-    let args: Vec<String> = env::args().collect();
+fn main() {
+    let mut args = env::args();
+    args.next();
 
-    match args.len() {
-        1 => eprintln!("Please provide command"),
-        2 => {
-            let cmd = &args[1];
+    let args = args.collect();
+    let dir = env::current_dir().unwrap();
+    let session = Session::new().unwrap();
 
-            let root_path = env::current_dir()?;
+    let result = commands::execute(CommandOpts { dir, session, args });
 
-            match &cmd[..] {
-                "init" => {
-                    handle_init(&root_path)?;
-                }
-                "commit" => {
-                    handle_commit(&root_path)?;
-                }
-                c => eprintln!("Command {} not supported", c),
-            }
-        }
-        3 => {
-            let cmd = &args[1];
-            match &cmd[..] {
-                "init" => {
-                    let path = Path::new(&args[2]);
-                    handle_init(&path)?;
-                }
-                "add" => {
-                    let paths = args[2..].iter().collect::<Vec<&String>>();
-
-                    let result = handle_add(paths);
-
-                    handle_result(result);
-                }
-
-                c => eprintln!("Command {} not supported", c),
-            }
-        }
-        _ => {
-            let cmd = &args[1];
-            match &cmd[..] {
-                "add" => {
-                    let paths = args[2..].iter().collect::<Vec<&String>>();
-
-                    let result = handle_add(paths);
-
-                    handle_result(result);
-                }
-
-                c => eprintln!("Command {} not supported", c),
-            }
-        }
-    }
-
-    Ok(())
+    exit(result);
 }

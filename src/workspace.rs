@@ -6,8 +6,8 @@ use std::{
     path::PathBuf,
 };
 
-pub struct Workspace<'a> {
-    path: &'a PathBuf,
+pub struct Workspace {
+    path: PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -30,13 +30,13 @@ pub struct Stat {
     pub metadata: Metadata,
 }
 
-impl<'a> Workspace<'a> {
-    pub fn new(path: &'a PathBuf) -> Self {
+impl Workspace {
+    pub fn new(path: PathBuf) -> Self {
         Self { path }
     }
 
     pub fn list_files(&self, path: Option<&PathBuf>) -> Vec<PathBuf> {
-        let path = path.unwrap_or(self.path);
+        let path = path.unwrap_or(&self.path);
 
         if path.is_dir() {
             path.read_dir()
