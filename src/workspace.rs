@@ -93,7 +93,7 @@ impl Workspace {
     }
 
     pub fn expand_path(&self, pathname: &str) -> Result<PathBuf, RitError> {
-        let path = fs::canonicalize(pathname);
+        let path = fs::canonicalize(&self.path.join(pathname));
 
         match path {
             Ok(path) => Ok(path),

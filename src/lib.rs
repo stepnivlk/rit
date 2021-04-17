@@ -6,16 +6,18 @@ mod database;
 
 mod refs;
 
-pub mod lockfile;
-
-pub mod index;
-
 mod id;
 
 mod repository;
 
 mod commands;
 
-pub use commands::*;
+pub mod lockfile;
+
+pub mod index;
 
 pub mod errors;
+
+pub use commands::*;
+
+pub use repository::Repository;
