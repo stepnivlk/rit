@@ -46,14 +46,14 @@ pub trait Storable: Object {
     }
 }
 
-pub struct Author {
-    name: String,
-    email: String,
+pub struct Author<'a> {
+    name: &'a str,
+    email: &'a str,
     time: DateTime<Local>,
 }
 
-impl Author {
-    pub fn new(name: String, email: String) -> Self {
+impl<'a> Author<'a> {
+    pub fn new(name: &'a str, email: &'a str) -> Self {
         Self {
             name,
             email,
@@ -62,7 +62,7 @@ impl Author {
     }
 }
 
-impl fmt::Display for Author {
+impl<'a> fmt::Display for Author<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let timestamp = self.time.format("%s %z");
 
