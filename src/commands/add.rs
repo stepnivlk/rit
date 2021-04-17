@@ -2,46 +2,67 @@ use super::{Command, CommandOpts};
 use crate::{errors::RitError, objects, repository::Repository};
 use std::path::PathBuf;
 
-pub struct Add(pub CommandOpts);
+pub struct Add {
+    opts: CommandOpts,
+    repo: Repository,
+}
 
-impl Command for Add {
-    fn execute(&mut self) -> Result<(), RitError> {
-        let mut repo = Repository::new(self.0.dir.clone());
-
-        repo.index.load_for_update()?;
-
+impl Add {
+    fn expanded_paths(&mut self) -> Result<Vec<PathBuf>, RitError> {
         let mut files: Vec<PathBuf> = vec![];
 
         // TODO: -clone
-        for path in self.0.args.clone() {
-            let path = repo.workspace.expand_path(&path);
+        for path in self.opts.args.clone() {
+            let path = self.repo.workspace.expand_path(&path);
             let path = path.map_err(|err| {
-                repo.index.release_lock().unwrap();
+                self.repo.index.release_lock().unwrap();
 
                 err
             })?;
 
-            for file in repo.workspace.list_files(Some(&path)) {
+            for file in self.repo.workspace.list_files(Some(&path)) {
                 files.push(file);
             }
         }
 
-        for file in files {
-            let data = repo.workspace.read_file(&file).map_err(|err| {
-                repo.index.release_lock().unwrap();
+        Ok(files)
+    }
 
-                err
-            })?;
-            let stat = repo.workspace.stat_file(&data);
+    fn add_to_index(&mut self, path: PathBuf) -> Result<(), RitError> {
+        let data = self.repo.workspace.read_file(&path).map_err(|err| {
+            self.repo.index.release_lock().unwrap();
 
-            let mut blob = objects::Blob::new(data);
+            err
+        })?;
+        let stat = self.repo.workspace.stat_file(&data);
 
-            let blob_id = repo.database.store(&mut blob).unwrap();
+        let mut blob = objects::Blob::new(data);
 
-            repo.index.add(file, blob_id, stat);
+        let blob_id = self.repo.database.store(&mut blob).unwrap();
+
+        self.repo.index.add(path, blob_id, stat);
+
+        Ok(())
+    }
+}
+
+impl Command for Add {
+    fn new(opts: CommandOpts) -> Self {
+        let repo = Repository::new(opts.dir.clone());
+
+        Self { opts, repo }
+    }
+
+    fn execute(&mut self) -> Result<(), RitError> {
+        self.repo.index.load_for_update()?;
+
+        let expanded_paths = self.expanded_paths()?;
+
+        for path in expanded_paths {
+            self.add_to_index(path)?;
         }
 
-        repo.index.write_updates()?;
+        self.repo.index.write_updates()?;
 
         Ok(())
     }

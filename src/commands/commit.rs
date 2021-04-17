@@ -1,7 +1,7 @@
 use super::{Command, CommandOpts};
 use crate::{errors::RitError, id::Id, objects, repository::Repository};
 
-pub struct Commit(pub CommandOpts);
+pub struct Commit(CommandOpts);
 
 impl Commit {
     fn commit<'a>(
@@ -31,6 +31,10 @@ impl Commit {
 }
 
 impl Command for Commit {
+    fn new(opts: CommandOpts) -> Self {
+        Self(opts)
+    }
+
     fn execute(&mut self) -> Result<(), RitError> {
         let mut repo = Repository::new(self.0.dir.clone());
 

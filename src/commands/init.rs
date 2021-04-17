@@ -2,7 +2,7 @@ use super::{Command, CommandOpts};
 use crate::errors::RitError;
 use std::{fs, path::PathBuf};
 
-pub struct Init(pub CommandOpts);
+pub struct Init(CommandOpts);
 
 impl Init {
     fn git_path(&mut self) -> PathBuf {
@@ -16,6 +16,10 @@ impl Init {
 }
 
 impl Command for Init {
+    fn new(opts: CommandOpts) -> Self {
+        Self(opts)
+    }
+
     fn execute(&mut self) -> Result<(), RitError> {
         let git_path = self.git_path();
 

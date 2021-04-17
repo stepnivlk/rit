@@ -37,6 +37,8 @@ impl Session {
 }
 
 trait Command {
+    fn new(opts: CommandOpts) -> Self;
+
     fn execute(&mut self) -> Result<(), RitError>;
 }
 
@@ -50,9 +52,9 @@ pub fn execute(mut opts: CommandOpts) -> Result<(), RitError> {
     let name = opts.args.remove(0);
 
     match &name[..] {
-        "init" => Init(opts).execute(),
-        "add" => Add(opts).execute(),
-        "commit" => Commit(opts).execute(),
+        "init" => Init::new(opts).execute(),
+        "add" => Add::new(opts).execute(),
+        "commit" => Commit::new(opts).execute(),
         _ => Err(RitError::UnknownCommand),
     }
 }
