@@ -27,7 +27,6 @@ impl Command for Add {
         }
 
         for file in files {
-            dbg!(&file);
             let data = repo.workspace.read_file(&file).map_err(|err| {
                 repo.index.release_lock().unwrap();
 
