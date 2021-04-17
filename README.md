@@ -1,0 +1,2 @@
+# rit
+Git in Rust
