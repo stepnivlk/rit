@@ -1,8 +1,5 @@
 use super::{bytes_to_uint, bytes_to_uint16};
-use crate::{
-    id,
-    workspace::{Metadata, Stat},
-};
+use crate::{id, workspace};
 use bytes::{BufMut, Bytes, BytesMut};
 use std::path::PathBuf;
 
@@ -15,29 +12,25 @@ pub struct Entry {
     pub id: id::Id,
     pub path: PathBuf,
     pub pathname: String,
-    metadata: Metadata,
+    metadata: workspace::Metadata,
     pub mode: u32,
     flags: usize,
 }
 
 impl Entry {
-    pub fn new(path: PathBuf, id: id::Id, stat: Stat) -> Self {
-        let pathname = path.as_os_str().to_str().unwrap().to_string();
-        // TODO:
-        let path_size = pathname.len();
-
+    pub fn new(workspace_entry: workspace::Entry, id: id::Id, stat: workspace::Stat) -> Self {
         Self {
             id,
-            path,
-            pathname,
+            path: workspace_entry.relative_path,
+            pathname: workspace_entry.relative_path_name,
             metadata: stat.metadata,
             mode: if stat.is_executable {
                 EXECUTABLE_MODE
             } else {
                 REGULAR_MODE
             },
-            flags: if path_size < MAX_PATH_SIZE {
-                path_size
+            flags: if workspace_entry.len < MAX_PATH_SIZE {
+                workspace_entry.len
             } else {
                 MAX_PATH_SIZE
             },
@@ -89,7 +82,7 @@ impl Entry {
             id,
             path: PathBuf::from(pathname.clone()),
             pathname,
-            metadata: Metadata {
+            metadata: workspace::Metadata {
                 ctime: ctime.into(),
                 ctime_nsec: ctime_nsec.into(),
                 mtime: mtime.into(),

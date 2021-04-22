@@ -32,25 +32,30 @@ pub struct Stat {
 
 #[derive(Debug)]
 pub struct Entry {
-    pub path: PathBuf,
+    pub relative_path: PathBuf,
+    pub absolute_path: PathBuf,
     pub name: String,
-    pub pathname: String,
+    pub relative_path_name: String,
+    pub len: usize,
 }
 
 impl Entry {
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new(absolute_path: PathBuf, relative_path: PathBuf) -> Self {
+        let relative_path_name: String = relative_path.to_string_lossy().into();
+        let len = relative_path_name.len();
+
         Self {
-            name: path.file_name().unwrap().to_string_lossy().into(),
-            pathname: path.to_string_lossy().into(),
-            path,
+            name: relative_path.file_name().unwrap().to_string_lossy().into(),
+            relative_path_name,
+            relative_path,
+            absolute_path,
+            len,
         }
     }
 }
 
 impl Workspace {
     pub fn new(path: PathBuf) -> Self {
-        let path = fs::canonicalize(path).unwrap();
-
         Self { path }
     }
 
@@ -72,9 +77,9 @@ impl Workspace {
                 .flat_map(|entry| self.list_files(Some(&path.join(entry))))
                 .collect()
         } else {
-            let path_entry = diff_paths(&path, &self.path).unwrap();
+            let relative_path = diff_paths(&path, &self.path).unwrap();
 
-            vec![Entry::new(path_entry)]
+            vec![Entry::new(path.clone(), relative_path)]
         }
     }
 
@@ -82,10 +87,10 @@ impl Workspace {
         OpenOptions::new()
             .read(true)
             .append(true)
-            .open(&entry.path)
+            .open(&entry.absolute_path)
             .map_err(|err| match err.kind() {
                 std::io::ErrorKind::PermissionDenied => {
-                    RitError::PermissionDenied(entry.pathname.clone())
+                    RitError::PermissionDenied(entry.relative_path_name.clone())
                 }
                 _ => RitError::Io(err),
             })

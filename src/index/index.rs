@@ -2,7 +2,7 @@ use super::{bytes_to_uint, Checksum, Entry, IndexError};
 use crate::{
     id,
     lockfile::{LockError, Lockfile},
-    workspace::Stat,
+    workspace,
 };
 use bytes::{BufMut, BytesMut};
 use std::{
@@ -62,8 +62,12 @@ impl Index {
         Ok(())
     }
 
-    pub fn add(&mut self, path: PathBuf, id: id::Id, stat: Stat) {
-        let entry = Entry::new(path, id, stat);
+    pub fn is_tracked(&self, pathname: &str) -> bool {
+        self.entries.contains_key(pathname)
+    }
+
+    pub fn add(&mut self, workspace_entry: workspace::Entry, id: id::Id, stat: workspace::Stat) {
+        let entry = Entry::new(workspace_entry, id, stat);
 
         self.discard_conflicts(&entry);
 
@@ -264,8 +268,8 @@ mod tests {
         ])
     }
 
-    fn get_stat() -> Stat {
-        Stat {
+    fn get_stat() -> workspace::Stat {
+        workspace::Stat {
             is_executable: false,
             metadata: Metadata {
                 ctime: 1,
@@ -282,7 +286,14 @@ mod tests {
         }
     }
 
-    fn map_entries<'a>(entries: &'a Vec<Entry>) -> Vec<&'a str> {
+    fn get_workspace_entry(path: &str) -> workspace::Entry {
+        let absolute_path = PathBuf::from(path);
+        let relative_path = PathBuf::from(path);
+
+        workspace::Entry::new(absolute_path, relative_path)
+    }
+
+    fn map_entries(entries: &Vec<Entry>) -> Vec<&str> {
         entries
             .iter()
             .map(|entry| &entry.pathname[..])
@@ -293,7 +304,7 @@ mod tests {
     fn it_adds_a_single_file() {
         let mut index = get_index();
 
-        index.add(PathBuf::from("alice.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("alice.txt"), get_id(), get_stat());
 
         let entries = index.entries();
         let entries = map_entries(&entries);
@@ -305,10 +316,14 @@ mod tests {
     fn it_replaces_a_file_with_a_directory() {
         let mut index = get_index();
 
-        index.add(PathBuf::from("alice.txt"), get_id(), get_stat());
-        index.add(PathBuf::from("bob.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("alice.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("bob.txt"), get_id(), get_stat());
 
-        index.add(PathBuf::from("alice.txt/nested.txt"), get_id(), get_stat());
+        index.add(
+            get_workspace_entry("alice.txt/nested.txt"),
+            get_id(),
+            get_stat(),
+        );
 
         let entries = index.entries();
         let entries = map_entries(&entries);
@@ -320,10 +335,10 @@ mod tests {
     fn it_replaces_a_directory_with_a_file() {
         let mut index = get_index();
 
-        index.add(PathBuf::from("alice.txt"), get_id(), get_stat());
-        index.add(PathBuf::from("nested/bob.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("alice.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("nested/bob.txt"), get_id(), get_stat());
 
-        index.add(PathBuf::from("nested"), get_id(), get_stat());
+        index.add(get_workspace_entry("nested"), get_id(), get_stat());
 
         let entries = index.entries();
         let entries = map_entries(&entries);
@@ -335,15 +350,15 @@ mod tests {
     fn it_recursively_replaces_a_directory_with_a_file() {
         let mut index = get_index();
 
-        index.add(PathBuf::from("alice.txt"), get_id(), get_stat());
-        index.add(PathBuf::from("nested/bob.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("alice.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("nested/bob.txt"), get_id(), get_stat());
         index.add(
-            PathBuf::from("nested/inner/claire.txt"),
+            get_workspace_entry("nested/inner/claire.txt"),
             get_id(),
             get_stat(),
         );
 
-        index.add(PathBuf::from("nested"), get_id(), get_stat());
+        index.add(get_workspace_entry("nested"), get_id(), get_stat());
 
         let entries = index.entries();
         let entries = map_entries(&entries);

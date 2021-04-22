@@ -1,10 +1,10 @@
 use super::{Command, CommandOpts, Execution};
 use crate::errors::RitError;
-use std::{fs, path::PathBuf};
+use std::{fs, io::BufRead, path::PathBuf};
 
-pub struct Init(CommandOpts);
+pub struct Init<R: BufRead>(CommandOpts<R>);
 
-impl Init {
+impl<R: BufRead> Init<R> {
     fn git_path(&mut self) -> PathBuf {
         self.0
             .args
@@ -15,8 +15,8 @@ impl Init {
     }
 }
 
-impl Command for Init {
-    fn new(opts: CommandOpts) -> Self {
+impl<R: BufRead> Command<R> for Init<R> {
+    fn new(opts: CommandOpts<R>) -> Self {
         Self(opts)
     }
 

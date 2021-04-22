@@ -1,12 +1,13 @@
 use super::{Command, CommandOpts, Execution};
 use crate::{errors::RitError, objects, repository::Repository, workspace::Entry};
+use std::io::BufRead;
 
-pub struct Add {
-    opts: CommandOpts,
+pub struct Add<R: BufRead> {
+    opts: CommandOpts<R>,
     repo: Repository,
 }
 
-impl Add {
+impl<R: BufRead> Add<R> {
     fn expanded_entries(&mut self) -> Result<Vec<Entry>, RitError> {
         let mut entries: Vec<Entry> = vec![];
 
@@ -39,14 +40,14 @@ impl Add {
 
         let blob_id = self.repo.database.store(&mut blob).unwrap();
 
-        self.repo.index.add(entry.path, blob_id, stat);
+        self.repo.index.add(entry, blob_id, stat);
 
         Ok(())
     }
 }
 
-impl Command for Add {
-    fn new(opts: CommandOpts) -> Self {
+impl<R: BufRead> Command<R> for Add<R> {
+    fn new(opts: CommandOpts<R>) -> Self {
         let repo = Repository::new(opts.dir.clone());
 
         Self { opts, repo }

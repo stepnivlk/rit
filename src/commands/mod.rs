@@ -1,8 +1,5 @@
 use crate::errors::RitError;
-use std::{
-    io::{self, Read},
-    path::PathBuf,
-};
+use std::{io::BufRead, path::PathBuf};
 
 mod init;
 use init::Init;
@@ -17,37 +14,38 @@ mod status;
 use status::{Status, StatusResult};
 
 #[derive(Clone, Debug)]
-pub struct Session {
+pub struct Session<R: BufRead> {
     pub name: String,
     pub email: String,
+    input: R,
 }
 
-impl Session {
-    pub fn new(name: Option<String>, email: Option<String>) -> Result<Self, RitError> {
+impl<R: BufRead> Session<R> {
+    pub fn new(name: Option<String>, email: Option<String>, input: R) -> Result<Self, RitError> {
         let name = name.unwrap();
         let email = email.unwrap();
 
-        Ok(Self { name, email })
+        Ok(Self { name, email, input })
     }
 
-    pub fn read_stdin(&self) -> Result<String, RitError> {
+    pub fn read_input(&mut self) -> Result<String, RitError> {
         let mut text = String::new();
 
-        io::stdin().read_to_string(&mut text)?;
+        self.input.read_to_string(&mut text)?;
 
         Ok(text)
     }
 }
 
-trait Command {
-    fn new(opts: CommandOpts) -> Self;
+trait Command<R: BufRead> {
+    fn new(opts: CommandOpts<R>) -> Self;
 
     fn execute(&mut self) -> Result<Execution, RitError>;
 }
 
-pub struct CommandOpts {
+pub struct CommandOpts<R: BufRead> {
     pub dir: PathBuf,
-    pub session: Session,
+    pub session: Session<R>,
     pub args: Vec<String>,
 }
 
@@ -57,7 +55,7 @@ pub enum Execution {
     Status(StatusResult),
 }
 
-pub fn execute(mut opts: CommandOpts) -> Result<Execution, RitError> {
+pub fn execute<R: BufRead>(mut opts: CommandOpts<R>) -> Result<Execution, RitError> {
     let name = opts.args.remove(0);
 
     match &name[..] {

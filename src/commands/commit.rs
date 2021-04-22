@@ -1,9 +1,10 @@
 use super::{Command, CommandOpts, Execution};
 use crate::{errors::RitError, id::Id, objects, repository::Repository};
+use std::io::BufRead;
 
-pub struct Commit(CommandOpts);
+pub struct Commit<R: BufRead>(CommandOpts<R>);
 
-impl Commit {
+impl<R: BufRead> Commit<R> {
     fn commit<'a>(
         &'a self,
         parent_id: &'a Option<String>,
@@ -30,8 +31,8 @@ impl Commit {
     }
 }
 
-impl Command for Commit {
-    fn new(opts: CommandOpts) -> Self {
+impl<R: BufRead> Command<R> for Commit<R> {
+    fn new(opts: CommandOpts<R>) -> Self {
         Self(opts)
     }
 
@@ -52,7 +53,7 @@ impl Command for Commit {
         let root_id = repo.database.store(&mut root)?;
         let parent_id = repo.refs.read_head();
 
-        let message = self.0.session.read_stdin()?;
+        let message = self.0.session.read_input()?;
 
         let mut commit = self.commit(&parent_id, root_id, &message);
         let commit_id = repo.database.store(&mut commit)?;

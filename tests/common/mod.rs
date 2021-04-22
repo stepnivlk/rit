@@ -10,7 +10,6 @@ use std::{
 
 pub struct Project {
     pub dir: PathBuf,
-    session: rit::Session,
 }
 
 impl Project {
@@ -29,38 +28,44 @@ impl Project {
 
     fn get_dir() -> PathBuf {
         let rng = thread_rng();
-        let s: String = rng.sample_iter(Alphanumeric).take(10).collect();
+        let name: String = rng.sample_iter(Alphanumeric).take(10).collect();
+        let name = format!("./tests/testdir/tmp_dir_{}", name);
 
-        PathBuf::from(format!("./tests/testdir/tmp_dir_{}", s))
+        let path = PathBuf::from(name);
+
+        fs::create_dir(&path).unwrap();
+
+        fs::canonicalize(path).unwrap()
     }
 
-    fn get_session() -> rit::Session {
+    fn get_session() -> rit::Session<&'static [u8]> {
         let name = String::from("name");
         let email = String::from("email");
 
-        rit::Session::new(Some(name), Some(email)).unwrap()
+        let input = &b"test input"[..];
+
+        rit::Session::new(Some(name), Some(email), input).unwrap()
     }
 
     fn new() -> Self {
         let dir = Self::get_dir();
-        let session = Self::get_session();
 
         let args = vec!["init".to_string()];
 
         rit::execute(rit::CommandOpts {
             dir: dir.clone(),
-            session: session.clone(),
+            session: Self::get_session(),
             args,
         })
         .unwrap();
 
-        Self { dir, session }
+        Self { dir }
     }
 
     pub fn cmd(&self, args: Vec<&str>) -> Result<rit::Execution, RitError> {
         rit::execute(rit::CommandOpts {
             dir: self.dir.clone(),
-            session: self.session.clone(),
+            session: Self::get_session(),
             args: args.iter().map(|arg| arg.to_string()).collect(),
         })
     }
@@ -91,12 +96,7 @@ impl Project {
     }
 
     pub fn expected_path(&self, name: &str) -> String {
-        format!(
-            "{}/{}",
-            self.dir.canonicalize().unwrap().to_str().unwrap(),
-            name
-        )
-        .to_string()
+        name.to_string()
     }
 
     pub fn make_executable(&self, name: &str) {

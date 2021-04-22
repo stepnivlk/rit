@@ -1,18 +1,16 @@
-use std::env;
+use std::{env, io};
 
 fn exit(result: Result<rit::Execution, rit::errors::RitError>) {
     std::process::exit(match result {
-        Ok(res) => {
-            match res {
-                rit::Execution::Status(res) => {
-                    for untracked in res.untracked.iter() {
-                        println!("?? {}", untracked.pathname);
-                    }
-
-                    0
+        Ok(res) => match res {
+            rit::Execution::Status(res) => {
+                for untracked in res.untracked.iter() {
+                    println!("?? {}", untracked.relative_path_name);
                 }
-                _ => 0
+
+                0
             }
+            _ => 0,
         },
         Err(err) => match err {
             rit::errors::RitError::MissingFile(_) => {
@@ -69,7 +67,10 @@ fn main() {
 
     let name = env::var("GIT_AUTHOR_NAME").ok();
     let email = env::var("GIT_AUTHOR_EMAIL").ok();
-    let session = rit::Session::new(name, email).unwrap();
+    let stdin = io::stdin();
+    let input = stdin.lock();
+
+    let session = rit::Session::new(name, email, input).unwrap();
 
     let result = rit::execute(rit::CommandOpts { dir, session, args });
 
