@@ -30,12 +30,31 @@ pub struct Stat {
     pub metadata: Metadata,
 }
 
+#[derive(Debug)]
+pub struct Entry {
+    pub path: PathBuf,
+    pub name: String,
+    pub pathname: String,
+}
+
+impl Entry {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            name: path.file_name().unwrap().to_string_lossy().into(),
+            pathname: path.to_string_lossy().into(),
+            path,
+        }
+    }
+}
+
 impl Workspace {
     pub fn new(path: PathBuf) -> Self {
+        let path = fs::canonicalize(path).unwrap();
+
         Self { path }
     }
 
-    pub fn list_files(&self, path: Option<&PathBuf>) -> Vec<PathBuf> {
+    pub fn list_files(&self, path: Option<&PathBuf>) -> Vec<Entry> {
         let path = path.unwrap_or(&self.path);
 
         if path.is_dir() {
@@ -44,6 +63,7 @@ impl Workspace {
                 .filter(|entry| entry.is_ok())
                 .map(|entry| entry.unwrap().path())
                 .filter(|entry| match entry.file_name().and_then(|f| f.to_str()) {
+                    // TODO:
                     Some(".git") => false,
                     Some(".gitignore") => false,
                     Some("target") => false,
@@ -52,20 +72,20 @@ impl Workspace {
                 .flat_map(|entry| self.list_files(Some(&path.join(entry))))
                 .collect()
         } else {
-            let entry = diff_paths(&path, &self.path).unwrap();
+            let path_entry = diff_paths(&path, &self.path).unwrap();
 
-            vec![entry]
+            vec![Entry::new(path_entry)]
         }
     }
 
-    pub fn read_file(&self, path: &PathBuf) -> Result<File, RitError> {
+    pub fn read_file(&self, entry: &Entry) -> Result<File, RitError> {
         OpenOptions::new()
             .read(true)
             .append(true)
-            .open(path)
+            .open(&entry.path)
             .map_err(|err| match err.kind() {
                 std::io::ErrorKind::PermissionDenied => {
-                    RitError::PermissionDenied(path.to_string_lossy().to_string())
+                    RitError::PermissionDenied(entry.pathname.clone())
                 }
                 _ => RitError::Io(err),
             })

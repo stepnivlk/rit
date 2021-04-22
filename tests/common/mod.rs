@@ -57,7 +57,7 @@ impl Project {
         Self { dir, session }
     }
 
-    pub fn cmd(&self, args: Vec<&str>) -> Result<(), RitError> {
+    pub fn cmd(&self, args: Vec<&str>) -> Result<rit::Execution, RitError> {
         rit::execute(rit::CommandOpts {
             dir: self.dir.clone(),
             session: self.session.clone(),

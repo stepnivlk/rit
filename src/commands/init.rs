@@ -1,4 +1,4 @@
-use super::{Command, CommandOpts};
+use super::{Command, CommandOpts, Execution};
 use crate::errors::RitError;
 use std::{fs, path::PathBuf};
 
@@ -20,13 +20,13 @@ impl Command for Init {
         Self(opts)
     }
 
-    fn execute(&mut self) -> Result<(), RitError> {
+    fn execute(&mut self) -> Result<Execution, RitError> {
         let git_path = self.git_path();
 
         for dir in &["objects", "refs"] {
             fs::create_dir_all(git_path.join(dir))?;
         }
 
-        Ok(())
+        Ok(Execution::Empty)
     }
 }

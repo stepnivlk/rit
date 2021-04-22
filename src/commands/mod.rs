@@ -13,6 +13,9 @@ use commit::Commit;
 mod add;
 use add::Add;
 
+mod status;
+use status::{Status, StatusResult};
+
 #[derive(Clone, Debug)]
 pub struct Session {
     pub name: String,
@@ -39,7 +42,7 @@ impl Session {
 trait Command {
     fn new(opts: CommandOpts) -> Self;
 
-    fn execute(&mut self) -> Result<(), RitError>;
+    fn execute(&mut self) -> Result<Execution, RitError>;
 }
 
 pub struct CommandOpts {
@@ -48,13 +51,20 @@ pub struct CommandOpts {
     pub args: Vec<String>,
 }
 
-pub fn execute(mut opts: CommandOpts) -> Result<(), RitError> {
+#[derive(Debug)]
+pub enum Execution {
+    Empty,
+    Status(StatusResult),
+}
+
+pub fn execute(mut opts: CommandOpts) -> Result<Execution, RitError> {
     let name = opts.args.remove(0);
 
     match &name[..] {
         "init" => Init::new(opts).execute(),
         "add" => Add::new(opts).execute(),
         "commit" => Commit::new(opts).execute(),
-        _ => Err(RitError::UnknownCommand),
+        "status" => Status::new(opts).execute(),
+        _ => Err(RitError::UnknownCommand(name.to_string())),
     }
 }

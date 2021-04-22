@@ -1,4 +1,4 @@
-use super::{Command, CommandOpts};
+use super::{Command, CommandOpts, Execution};
 use crate::{errors::RitError, id::Id, objects, repository::Repository};
 
 pub struct Commit(CommandOpts);
@@ -35,7 +35,7 @@ impl Command for Commit {
         Self(opts)
     }
 
-    fn execute(&mut self) -> Result<(), RitError> {
+    fn execute(&mut self) -> Result<Execution, RitError> {
         let mut repo = Repository::new(self.0.dir.clone());
 
         repo.index.load()?;
@@ -60,6 +60,6 @@ impl Command for Commit {
 
         self.report(parent_id, commit_id, message);
 
-        Ok(())
+        Ok(Execution::Empty)
     }
 }

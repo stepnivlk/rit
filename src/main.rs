@@ -1,8 +1,19 @@
 use std::env;
 
-fn exit(result: Result<(), rit::errors::RitError>) {
+fn exit(result: Result<rit::Execution, rit::errors::RitError>) {
     std::process::exit(match result {
-        Ok(_) => 0,
+        Ok(res) => {
+            match res {
+                rit::Execution::Status(res) => {
+                    for untracked in res.untracked.iter() {
+                        println!("?? {}", untracked.pathname);
+                    }
+
+                    0
+                }
+                _ => 0
+            }
+        },
         Err(err) => match err {
             rit::errors::RitError::MissingFile(_) => {
                 eprintln!("fatal: {}", err);
