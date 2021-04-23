@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rit::errors::RitError;
 use std::{
@@ -105,6 +107,10 @@ impl Project {
 
     pub fn make_unreadable(&self, name: &str) {
         self.set_file_mode(name, 0);
+    }
+
+    pub fn make_dir(&self, name: &str) {
+        fs::create_dir(self.dir.join(name));
     }
 
     fn set_file_mode(&self, name: &str, mode: u32) {

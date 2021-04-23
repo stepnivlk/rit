@@ -69,3 +69,25 @@ fn it_lists_untracked_files_in_tracked_directories() {
         assert_untracked(vec!["a/b/c/", "a/outer.txt"], execution);
     });
 }
+
+#[test]
+fn it_does_not_list_empty_untracked_directories() {
+    common::Project::open(|project| {
+        project.make_dir("outer");
+
+        let execution = project.cmd(vec!["status"]).unwrap();
+
+        assert_untracked(vec![], execution);
+    });
+}
+
+#[test]
+fn it_lists_untracked_directories_that_indirectly_contain_files() {
+    common::Project::open(|project| {
+        project.write_file("outer/inner/file.txt", "");
+
+        let execution = project.cmd(vec!["status"]).unwrap();
+
+        assert_untracked(vec!["outer/"], execution);
+    });
+}

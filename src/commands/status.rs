@@ -10,16 +10,37 @@ pub struct Status<R: BufRead> {
 }
 
 impl<R: BufRead> Status<R> {
-    fn scan_workspace(&mut self, prefix: Option<&PathBuf>) {
+    fn scan_workspace(&mut self) {
+        self.do_scan_workspace(None);
+
+        self.untracked
+            .sort_by_key(|entry| entry.relative_path.clone());
+    }
+
+    fn do_scan_workspace(&mut self, prefix: Option<&PathBuf>) {
         for entry in self.repo.workspace.list_dir(prefix) {
             if self.repo.index.is_tracked(&entry.relative_path_name) {
                 if entry.is_dir {
-                    self.scan_workspace(Some(&entry.absolute_path));
+                    self.do_scan_workspace(Some(&entry.absolute_path));
                 }
-            } else {
+            } else if self.is_trackable_entry(&entry) {
                 self.untracked.push(entry);
             }
         }
+    }
+
+    fn is_trackable_entry(&self, entry: &Entry) -> bool {
+        if !entry.is_dir {
+            return !self.repo.index.is_tracked(&entry.relative_path_name);
+        }
+
+        let mut nested_entries = self.repo.workspace.list_dir(Some(&entry.absolute_path));
+
+        nested_entries.sort_by_key(|entry| entry.is_dir);
+
+        nested_entries
+            .iter()
+            .any(|entry| self.is_trackable_entry(entry))
     }
 }
 
@@ -42,10 +63,7 @@ impl<R: BufRead> Command<R> for Status<R> {
     fn execute(&mut self) -> Result<Execution, RitError> {
         self.repo.index.load()?;
 
-        self.scan_workspace(None);
-
-        self.untracked
-            .sort_by_key(|entry| entry.relative_path.clone());
+        self.scan_workspace();
 
         // TODO: -clone
         Ok(Execution::Status(StatusResult {
