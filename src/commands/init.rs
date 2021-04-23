@@ -9,8 +9,8 @@ impl<R: BufRead> Init<R> {
         self.0
             .args
             .get(0)
-            .map(|path| PathBuf::from(path))
-            .unwrap_or(self.0.dir.clone())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.0.dir.clone())
             .join(".git")
     }
 }

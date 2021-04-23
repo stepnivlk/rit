@@ -1,6 +1,8 @@
 use crate::errors::RitError;
 use pathdiff::diff_paths;
+use std::path::Path;
 use std::{
+    fmt,
     fs::{self, File, OpenOptions},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
@@ -30,19 +32,21 @@ pub struct Stat {
     pub metadata: Metadata,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Entry {
     pub relative_path: PathBuf,
     pub absolute_path: PathBuf,
     pub name: String,
     pub relative_path_name: String,
     pub len: usize,
+    pub is_dir: bool,
 }
 
 impl Entry {
     pub fn new(absolute_path: PathBuf, relative_path: PathBuf) -> Self {
         let relative_path_name: String = relative_path.to_string_lossy().into();
         let len = relative_path_name.len();
+        let is_dir = absolute_path.is_dir();
 
         Self {
             name: relative_path.file_name().unwrap().to_string_lossy().into(),
@@ -50,7 +54,19 @@ impl Entry {
             relative_path,
             absolute_path,
             len,
+            is_dir,
         }
+    }
+}
+
+impl fmt::Display for Entry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}{}",
+            self.relative_path_name,
+            if self.is_dir { "/" } else { "" }
+        )
     }
 }
 
@@ -63,17 +79,7 @@ impl Workspace {
         let path = path.unwrap_or(&self.path);
 
         if path.is_dir() {
-            path.read_dir()
-                .unwrap()
-                .filter(|entry| entry.is_ok())
-                .map(|entry| entry.unwrap().path())
-                .filter(|entry| match entry.file_name().and_then(|f| f.to_str()) {
-                    // TODO:
-                    Some(".git") => false,
-                    Some(".gitignore") => false,
-                    Some("target") => false,
-                    _ => true,
-                })
+            self.read_dir(path)
                 .flat_map(|entry| self.list_files(Some(&path.join(entry))))
                 .collect()
         } else {
@@ -81,6 +87,18 @@ impl Workspace {
 
             vec![Entry::new(path.clone(), relative_path)]
         }
+    }
+
+    pub fn list_dir(&self, path: Option<&PathBuf>) -> Vec<Entry> {
+        let path = path.unwrap_or(&self.path);
+
+        self.read_dir(path)
+            .map(|path| {
+                let relative_path = diff_paths(&path, &self.path).unwrap();
+
+                Entry::new(path, relative_path)
+            })
+            .collect()
     }
 
     pub fn read_file(&self, entry: &Entry) -> Result<File, RitError> {
@@ -124,5 +142,18 @@ impl Workspace {
             Ok(path) => Ok(path),
             Err(_) => Err(RitError::MissingFile(String::from(pathname))),
         }
+    }
+
+    fn read_dir(&self, path: &Path) -> impl Iterator<Item = PathBuf> {
+        path.read_dir()
+            .unwrap()
+            .filter(|path| path.is_ok())
+            .map(|path| path.unwrap().path())
+            .filter(|path| {
+                !matches!(
+                    path.file_name().and_then(|f| f.to_str()),
+                    Some(".git") | Some(".gitignore") | Some("target")
+                )
+            })
     }
 }

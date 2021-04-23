@@ -5,7 +5,7 @@ fn exit(result: Result<rit::Execution, rit::errors::RitError>) {
         Ok(res) => match res {
             rit::Execution::Status(res) => {
                 for untracked in res.untracked.iter() {
-                    println!("?? {}", untracked.relative_path_name);
+                    println!("?? {}", untracked);
                 }
 
                 0

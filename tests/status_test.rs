@@ -1,12 +1,12 @@
 mod common;
 
-fn assert_status(expected: Vec<&str>, execution: rit::Execution) {
+fn assert_untracked(expected: Vec<&str>, execution: rit::Execution) {
     match execution {
         rit::Execution::Status(res) => {
             let names: Vec<String> = res
                 .untracked
                 .iter()
-                .map(|entry| entry.relative_path_name.clone())
+                .map(|entry| format!("{}", entry))
                 .collect();
 
             assert_eq!(expected, names);
@@ -23,7 +23,7 @@ fn it_lists_untracked_files_in_name_order() {
 
         let execution = project.cmd(vec!["status"]).unwrap();
 
-        assert_status(vec!["another.txt", "file.txt"], execution);
+        assert_untracked(vec!["another.txt", "file.txt"], execution);
     });
 }
 
@@ -38,6 +38,34 @@ fn it_lists_files_as_untracked_when_they_are_not_in_index() {
 
         let execution = project.cmd(vec!["status"]).unwrap();
 
-        assert_status(vec!["file.txt"], execution);
+        assert_untracked(vec!["file.txt"], execution);
+    });
+}
+
+#[test]
+fn it_lists_untracked_directories_without_contents() {
+    common::Project::open(|project| {
+        project.write_file("file.txt", "");
+        project.write_file("dir/another.txt", "");
+
+        let execution = project.cmd(vec!["status"]).unwrap();
+
+        assert_untracked(vec!["dir/", "file.txt"], execution);
+    });
+}
+
+#[test]
+fn it_lists_untracked_files_in_tracked_directories() {
+    common::Project::open(|project| {
+        project.write_file("a/b/inner.txt", "");
+        project.cmd(vec!["add", "."]).unwrap();
+        project.cmd(vec!["commit"]).unwrap();
+
+        project.write_file("a/outer.txt", "");
+        project.write_file("a/b/c/file.txt", "");
+
+        let execution = project.cmd(vec!["status"]).unwrap();
+
+        assert_untracked(vec!["a/b/c/", "a/outer.txt"], execution);
     });
 }

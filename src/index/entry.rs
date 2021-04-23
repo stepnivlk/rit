@@ -70,10 +70,10 @@ impl Entry {
         let mut path: Vec<u8> = vec![];
         let mut pos = 62;
 
-        while &data[pos] != &0x00 {
+        while data[pos] != 0x00 {
             path.push(data[pos]);
 
-            pos = pos + 1;
+            pos += 1;
         }
 
         let pathname = String::from_utf8_lossy(&path).to_string();

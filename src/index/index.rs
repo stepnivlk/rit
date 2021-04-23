@@ -47,23 +47,20 @@ impl Index {
 
         let file = self.open_index_file();
 
-        match file {
-            Ok(f) => {
-                let mut reader = Checksum::new(f);
+        if let Ok(f) = file {
+            let mut reader = Checksum::new(f);
 
-                let count = self.read_header(&mut reader)?;
-                self.read_entries(&mut reader, count)?;
+            let count = self.read_header(&mut reader)?;
+            self.read_entries(&mut reader, count)?;
 
-                reader.verify_checksum()?;
-            }
-            Err(_) => {}
+            reader.verify_checksum()?;
         };
 
         Ok(())
     }
 
     pub fn is_tracked(&self, pathname: &str) -> bool {
-        self.entries.contains_key(pathname)
+        self.entries.contains_key(pathname) || self.parents.contains_key(pathname)
     }
 
     pub fn add(&mut self, workspace_entry: workspace::Entry, id: id::Id, stat: workspace::Stat) {
@@ -71,23 +68,7 @@ impl Index {
 
         self.discard_conflicts(&entry);
 
-        let parents = entry.parents();
-
-        for parent in parents {
-            let parent_pathname: String = parent.to_string_lossy().into();
-
-            match self.parents.get_mut(&parent_pathname) {
-                Some(contents) => {
-                    contents.insert(entry.pathname.clone());
-                }
-                None => {
-                    let mut contents = HashSet::new();
-                    contents.insert(entry.pathname.clone());
-
-                    self.parents.insert(parent_pathname, contents);
-                }
-            };
-        }
+        self.add_parents(&entry);
 
         self.entries.insert(entry.pathname.clone(), entry);
 
@@ -121,8 +102,8 @@ impl Index {
         for entry in entries {
             let data = &entry.data()[..];
 
-            self.lockfile.write(&data[..])?;
-            self.id_builder.add(&data[..]);
+            self.lockfile.write(data)?;
+            self.id_builder.add(data);
         }
 
         let id = self.id_builder.commit();
@@ -164,9 +145,7 @@ impl Index {
 
         let entry = entry.unwrap();
 
-        let parents = entry.parents();
-
-        for parent in parents {
+        for parent in entry.parents() {
             let dirname = parent.to_str().unwrap();
 
             let dir = self.parents.get_mut(dirname);
@@ -218,10 +197,31 @@ impl Index {
             }
 
             let entry = Entry::parse(entry);
+
+            self.add_parents(&entry);
+
             self.entries.insert(entry.pathname.clone(), entry);
         }
 
         Ok(())
+    }
+
+    fn add_parents(&mut self, entry: &Entry) {
+        for parent in entry.parents() {
+            let parent_pathname: String = parent.to_string_lossy().into();
+
+            match self.parents.get_mut(&parent_pathname) {
+                Some(contents) => {
+                    contents.insert(entry.pathname.clone());
+                }
+                None => {
+                    let mut contents = HashSet::new();
+                    contents.insert(entry.pathname.clone());
+
+                    self.parents.insert(parent_pathname, contents);
+                }
+            };
+        }
     }
 
     fn clear(&mut self) {

@@ -22,8 +22,8 @@ pub struct Session<R: BufRead> {
 
 impl<R: BufRead> Session<R> {
     pub fn new(name: Option<String>, email: Option<String>, input: R) -> Result<Self, RitError> {
-        let name = name.unwrap();
-        let email = email.unwrap();
+        let name = name.ok_or(RitError::Env)?;
+        let email = email.ok_or(RitError::Env)?;
 
         Ok(Self { name, email, input })
     }
