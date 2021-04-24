@@ -15,6 +15,12 @@ pub struct Status {
     stats: HashMap<String, Stat>,
 }
 
+#[derive(Debug)]
+pub struct StatusResult {
+    pub untracked: Vec<Entry>,
+    pub changed: Vec<Entry>,
+}
+
 impl Status {
     pub fn new(session: Session) -> Self {
         let repo = Repository::new(session.project_dir.clone());
@@ -28,12 +34,12 @@ impl Status {
         }
     }
 
-    fn detect_worspace_changes(&mut self) {
-        for entry in self.repo.index.entries() {
-            if let Some(stat) = self.stats.get(&entry.pathname) {
-                if !entry.matches_stat(stat) {
-                    let absolute_path = self.session.project_dir.join(&entry.path);
-                    let workspace_entry = workspace::Entry::new(absolute_path, entry.path);
+    fn detect_workspace_changes(&mut self) {
+        for index_entry in self.repo.index.entries() {
+            if let Some(stat) = self.stats.get(&index_entry.pathname) {
+                if !index_entry.matches_stat(stat) {
+                    let absolute_path = self.session.project_dir.join(&index_entry.path);
+                    let workspace_entry = workspace::Entry::new(absolute_path, index_entry.path);
 
                     self.changed.push(workspace_entry);
                 }
@@ -77,18 +83,12 @@ impl Status {
     }
 }
 
-#[derive(Debug)]
-pub struct StatusResult {
-    pub untracked: Vec<Entry>,
-    pub changed: Vec<Entry>,
-}
-
 impl Command for Status {
     fn execute(&mut self) -> Result<Execution, RitError> {
         self.repo.index.load()?;
 
         self.scan_workspace();
-        self.detect_worspace_changes();
+        self.detect_workspace_changes();
 
         // TODO: -clone
         Ok(Execution::Status(StatusResult {

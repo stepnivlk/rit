@@ -8,7 +8,7 @@ pub use entry::Entry;
 pub use errors::IndexError;
 pub use index::Index;
 
-fn bytes_to_uint(bytes: &[u8]) -> u32 {
+fn bytes_to_uint32(bytes: &[u8]) -> u32 {
     let mut num = [0u8; 4];
     num.clone_from_slice(bytes);
 

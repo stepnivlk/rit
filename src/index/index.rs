@@ -1,10 +1,10 @@
-use super::{bytes_to_uint, Checksum, Entry, IndexError};
+use super::{bytes_to_uint32, Checksum, Entry, IndexError};
 use crate::{
     id,
     lockfile::{LockError, Lockfile},
     workspace,
 };
-use bytes::{BufMut, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use std::{
     collections::{HashMap, HashSet},
     fs::{File, OpenOptions},
@@ -100,7 +100,8 @@ impl Index {
         let entries = self.entries();
 
         for entry in entries {
-            let data = &entry.data()[..];
+            let data: Bytes = entry.into();
+            let data = &data[..];
 
             self.lockfile.write(data)?;
             self.id_builder.add(data);
@@ -164,8 +165,8 @@ impl Index {
         let data = reader.read(HEADER_SIZE)?;
 
         let signature = &data[..4];
-        let version = bytes_to_uint(&data[4..8]);
-        let count = bytes_to_uint(&data[8..12]);
+        let version = bytes_to_uint32(&data[4..8]);
+        let count = bytes_to_uint32(&data[8..12]);
 
         if signature != SIGNATURE {
             let msg = format!(
@@ -188,15 +189,15 @@ impl Index {
 
     fn read_entries(&mut self, reader: &mut Checksum, count: u32) -> Result<(), IndexError> {
         for _ in 0..count {
-            let mut entry = reader.read(ENTRY_MIN_SIZE)?;
+            let mut bytes = reader.read(ENTRY_MIN_SIZE)?;
 
-            while entry.last() != Some(&0x00) {
+            while bytes.last() != Some(&0x00) {
                 let mut chunk = reader.read(8)?;
 
-                entry.append(&mut chunk);
+                bytes.append(&mut chunk);
             }
 
-            let entry = Entry::parse(entry);
+            let entry = Entry::from(bytes);
 
             self.add_parents(&entry);
 
@@ -252,7 +253,7 @@ impl Index {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{id::Id, workspace::Metadata};
+    use crate::id::Id;
 
     fn get_index() -> Index {
         let tmp_path = std::env::current_dir().unwrap().join("tmp/");
@@ -270,19 +271,16 @@ mod tests {
 
     fn get_stat() -> workspace::Stat {
         workspace::Stat {
-            is_executable: false,
-            metadata: Metadata {
-                ctime: 1,
-                ctime_nsec: 2,
-                mtime: 3,
-                mtime_nsec: 4,
-                dev: 5,
-                ino: 6,
-                mode: 7,
-                uid: 8,
-                gid: 9,
-                size: 10,
-            },
+            ctime: 1,
+            ctime_nsec: 2,
+            mtime: 3,
+            mtime_nsec: 4,
+            dev: 5,
+            ino: 6,
+            mode: 7,
+            uid: 8,
+            gid: 9,
+            size: 10,
         }
     }
 
