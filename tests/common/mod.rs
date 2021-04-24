@@ -19,6 +19,17 @@ impl Project {
     where
         T: FnOnce(&Self) -> () + panic::UnwindSafe,
     {
+        Self::open_clean(|project| {
+            project.init(None).unwrap();
+
+            test(project)
+        })
+    }
+
+    pub fn open_clean<T>(test: T) -> ()
+    where
+        T: FnOnce(&Self) -> () + panic::UnwindSafe,
+    {
         let project = Self::new();
 
         let result = panic::catch_unwind(|| test(&project));
@@ -40,7 +51,7 @@ impl Project {
         fs::canonicalize(path).unwrap()
     }
 
-    fn new() -> Self {
+    pub fn new() -> Self {
         let project_dir = Self::get_dir();
 
         let author_name = String::from("name");
@@ -51,9 +62,13 @@ impl Project {
             project_dir,
         };
 
-        rit::Init::new(session.clone(), None).execute().unwrap();
-
         Self { session }
+    }
+
+    pub fn init(&self, path: Option<&str>) -> Result<rit::Execution, RitError> {
+        let path = path.map(|p| p.to_string());
+
+        rit::Init::new(self.session.clone(), path).execute()
     }
 
     pub fn add(&self, paths: Vec<&str>) -> Result<rit::Execution, RitError> {
@@ -109,6 +124,10 @@ impl Project {
 
     pub fn make_dir(&self, name: &str) {
         fs::create_dir(self.session.project_dir.join(name)).unwrap();
+    }
+
+    pub fn dir(&self) -> &PathBuf {
+        &self.session.project_dir
     }
 
     fn set_file_mode(&self, name: &str, mode: u32) {

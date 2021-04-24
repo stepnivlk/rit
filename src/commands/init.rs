@@ -13,17 +13,21 @@ impl Init {
     }
 
     fn git_path(&mut self) -> PathBuf {
-        self.path
+        let relative_path = self
+            .path
             .as_ref()
             .map(PathBuf::from)
             .unwrap_or_else(|| self.session.project_dir.clone())
-            .join(".git")
+            .join(".git");
+
+        self.session.project_dir.join(relative_path)
     }
 }
 
 impl Command for Init {
     fn execute(&mut self) -> Result<Execution, RitError> {
         let git_path = self.git_path();
+        dbg!(&git_path);
 
         for dir in &["objects", "refs"] {
             fs::create_dir_all(git_path.join(dir))?;
