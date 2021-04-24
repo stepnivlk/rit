@@ -1,20 +1,24 @@
-use super::{Command, CommandOpts, Execution};
-use crate::{errors::RitError, objects, repository::Repository, workspace::Entry};
-use std::io::BufRead;
+use super::{Command, Execution};
+use crate::{errors::RitError, objects, repository::Repository, workspace::Entry, Session};
 
-pub struct Add<R: BufRead> {
-    opts: CommandOpts<R>,
+pub struct Add {
+    paths: Vec<String>,
     repo: Repository,
 }
 
-impl<R: BufRead> Add<R> {
+impl Add {
+    pub fn new(session: Session, paths: Vec<String>) -> Self {
+        let repo = Repository::new(session.project_dir);
+
+        Self { paths, repo }
+    }
+
     fn expanded_entries(&mut self) -> Result<Vec<Entry>, RitError> {
         let mut entries: Vec<Entry> = vec![];
 
         // TODO: -clone
-        for path in self.opts.args.clone() {
-            let path = self.repo.workspace.expand_path(&path);
-            let path = path.map_err(|err| {
+        for path in self.paths.clone() {
+            let path = self.repo.workspace.expand_path(&path).map_err(|err| {
                 self.repo.index.release_lock().unwrap();
 
                 err
@@ -46,13 +50,7 @@ impl<R: BufRead> Add<R> {
     }
 }
 
-impl<R: BufRead> Command<R> for Add<R> {
-    fn new(opts: CommandOpts<R>) -> Self {
-        let repo = Repository::new(opts.dir.clone());
-
-        Self { opts, repo }
-    }
-
+impl Command for Add {
     fn execute(&mut self) -> Result<Execution, RitError> {
         self.repo.index.load_for_update()?;
 

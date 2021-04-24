@@ -89,14 +89,17 @@ impl Workspace {
         }
     }
 
-    pub fn list_dir(&self, path: Option<&PathBuf>) -> Vec<Entry> {
+    pub fn list_dir(&self, path: Option<&PathBuf>) -> Vec<(Entry, Stat)> {
         let path = path.unwrap_or(&self.path);
 
         self.read_dir(path)
             .map(|path| {
                 let relative_path = diff_paths(&path, &self.path).unwrap();
 
-                Entry::new(path, relative_path)
+                let file = File::open(&path).unwrap();
+                let stat = self.stat_file(&file);
+
+                (Entry::new(path, relative_path), stat)
             })
             .collect()
     }

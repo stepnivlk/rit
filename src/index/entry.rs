@@ -37,6 +37,10 @@ impl Entry {
         }
     }
 
+    pub fn matches_stat(&self, stat: &workspace::Stat) -> bool {
+        self.metadata.size == stat.metadata.size
+    }
+
     pub fn parents(&self) -> Vec<PathBuf> {
         let mut path = self.path.iter();
         let mut expanded_parent_path = PathBuf::new();

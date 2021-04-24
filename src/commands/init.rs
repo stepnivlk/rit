@@ -1,25 +1,27 @@
-use super::{Command, CommandOpts, Execution};
-use crate::errors::RitError;
-use std::{fs, io::BufRead, path::PathBuf};
+use super::{Command, Execution};
+use crate::{errors::RitError, Session};
+use std::{fs, path::PathBuf};
 
-pub struct Init<R: BufRead>(CommandOpts<R>);
+pub struct Init {
+    session: Session,
+    path: Option<String>,
+}
 
-impl<R: BufRead> Init<R> {
+impl Init {
+    pub fn new(session: Session, path: Option<String>) -> Self {
+        Self { session, path }
+    }
+
     fn git_path(&mut self) -> PathBuf {
-        self.0
-            .args
-            .get(0)
+        self.path
+            .as_ref()
             .map(PathBuf::from)
-            .unwrap_or_else(|| self.0.dir.clone())
+            .unwrap_or_else(|| self.session.project_dir.clone())
             .join(".git")
     }
 }
 
-impl<R: BufRead> Command<R> for Init<R> {
-    fn new(opts: CommandOpts<R>) -> Self {
-        Self(opts)
-    }
-
+impl Command for Init {
     fn execute(&mut self) -> Result<Execution, RitError> {
         let git_path = self.git_path();
 

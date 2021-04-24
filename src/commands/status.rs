@@ -1,15 +1,46 @@
-use super::{Command, CommandOpts, Execution};
-use crate::{errors::RitError, repository::Repository, workspace::Entry};
-use std::io::BufRead;
-use std::path::PathBuf;
+use super::{Command, Execution};
+use crate::{
+    errors::RitError,
+    repository::Repository,
+    workspace::{self, Entry, Stat},
+    Session,
+};
+use std::{collections::HashMap, path::PathBuf};
 
-pub struct Status<R: BufRead> {
-    opts: CommandOpts<R>,
+pub struct Status {
+    session: Session,
     repo: Repository,
     untracked: Vec<Entry>,
+    changed: Vec<Entry>,
+    stats: HashMap<String, Stat>,
 }
 
-impl<R: BufRead> Status<R> {
+impl Status {
+    pub fn new(session: Session) -> Self {
+        let repo = Repository::new(session.project_dir.clone());
+
+        Self {
+            session,
+            repo,
+            untracked: vec![],
+            changed: vec![],
+            stats: HashMap::new(),
+        }
+    }
+
+    fn detect_worspace_changes(&mut self) {
+        for entry in self.repo.index.entries() {
+            if let Some(stat) = self.stats.get(&entry.pathname) {
+                if !entry.matches_stat(stat) {
+                    let absolute_path = self.session.project_dir.join(&entry.path);
+                    let workspace_entry = workspace::Entry::new(absolute_path, entry.path);
+
+                    self.changed.push(workspace_entry);
+                }
+            }
+        }
+    }
+
     fn scan_workspace(&mut self) {
         self.do_scan_workspace(None);
 
@@ -18,10 +49,12 @@ impl<R: BufRead> Status<R> {
     }
 
     fn do_scan_workspace(&mut self, prefix: Option<&PathBuf>) {
-        for entry in self.repo.workspace.list_dir(prefix) {
+        for (entry, stat) in self.repo.workspace.list_dir(prefix) {
             if self.repo.index.is_tracked(&entry.relative_path_name) {
                 if entry.is_dir {
                     self.do_scan_workspace(Some(&entry.absolute_path));
+                } else {
+                    self.stats.insert(entry.relative_path_name, stat);
                 }
             } else if self.is_trackable_entry(&entry) {
                 self.untracked.push(entry);
@@ -36,38 +69,31 @@ impl<R: BufRead> Status<R> {
 
         let mut nested_entries = self.repo.workspace.list_dir(Some(&entry.absolute_path));
 
-        nested_entries.sort_by_key(|entry| entry.is_dir);
+        nested_entries.sort_by_key(|(entry, _)| entry.is_dir);
 
         nested_entries
             .iter()
-            .any(|entry| self.is_trackable_entry(entry))
+            .any(|(entry, _)| self.is_trackable_entry(entry))
     }
 }
 
 #[derive(Debug)]
 pub struct StatusResult {
     pub untracked: Vec<Entry>,
+    pub changed: Vec<Entry>,
 }
 
-impl<R: BufRead> Command<R> for Status<R> {
-    fn new(opts: CommandOpts<R>) -> Self {
-        let repo = Repository::new(opts.dir.clone());
-
-        Self {
-            opts,
-            repo,
-            untracked: vec![],
-        }
-    }
-
+impl Command for Status {
     fn execute(&mut self) -> Result<Execution, RitError> {
         self.repo.index.load()?;
 
         self.scan_workspace();
+        self.detect_worspace_changes();
 
         // TODO: -clone
         Ok(Execution::Status(StatusResult {
             untracked: self.untracked.clone(),
+            changed: self.changed.clone(),
         }))
     }
 }

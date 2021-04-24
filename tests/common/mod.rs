@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use rit::errors::RitError;
+use rit::{errors::RitError, Command, Session};
 use std::{
     fs::{self, OpenOptions},
     io::prelude::*,
@@ -11,7 +11,7 @@ use std::{
 };
 
 pub struct Project {
-    pub dir: PathBuf,
+    session: Session,
 }
 
 impl Project {
@@ -40,46 +40,44 @@ impl Project {
         fs::canonicalize(path).unwrap()
     }
 
-    fn get_session() -> rit::Session<&'static [u8]> {
-        let name = String::from("name");
-        let email = String::from("email");
-
-        let input = &b"test input"[..];
-
-        rit::Session::new(Some(name), Some(email), input).unwrap()
-    }
-
     fn new() -> Self {
-        let dir = Self::get_dir();
+        let project_dir = Self::get_dir();
 
-        let args = vec!["init".to_string()];
+        let author_name = String::from("name");
+        let author_email = String::from("email");
+        let session = Session {
+            author_name,
+            author_email,
+            project_dir,
+        };
 
-        rit::execute(rit::CommandOpts {
-            dir: dir.clone(),
-            session: Self::get_session(),
-            args,
-        })
-        .unwrap();
+        rit::Init::new(session.clone(), None).execute().unwrap();
 
-        Self { dir }
+        Self { session }
     }
 
-    pub fn cmd(&self, args: Vec<&str>) -> Result<rit::Execution, RitError> {
-        rit::execute(rit::CommandOpts {
-            dir: self.dir.clone(),
-            session: Self::get_session(),
-            args: args.iter().map(|arg| arg.to_string()).collect(),
-        })
+    pub fn add(&self, paths: Vec<&str>) -> Result<rit::Execution, RitError> {
+        let paths = paths.iter().map(|path| path.to_string()).collect();
+
+        rit::Add::new(self.session.clone(), paths).execute()
+    }
+
+    pub fn commit(&self, message: &str) -> Result<rit::Execution, RitError> {
+        rit::Commit::new(self.session.clone(), message.to_string()).execute()
+    }
+
+    pub fn status(&self) -> Result<rit::Execution, RitError> {
+        rit::Status::new(self.session.clone()).execute()
     }
 
     pub fn write_file(&self, name: &str, content: &str) {
-        let path = self.dir.join(name);
+        let path = self.session.project_dir.join(name);
         let prefix = path.parent().unwrap();
         fs::create_dir_all(prefix).unwrap();
 
         let mut file = OpenOptions::new()
             .write(true)
-            .create_new(true)
+            .create(true)
             .open(path)
             .unwrap();
 
@@ -87,7 +85,7 @@ impl Project {
     }
 
     pub fn index_entries(&self) -> Vec<(String, u32)> {
-        let mut repo = rit::Repository::new(self.dir.clone());
+        let mut repo = rit::Repository::new(self.session.project_dir.clone());
         repo.index.load().unwrap();
 
         repo.index
@@ -110,11 +108,11 @@ impl Project {
     }
 
     pub fn make_dir(&self, name: &str) {
-        fs::create_dir(self.dir.join(name));
+        fs::create_dir(self.session.project_dir.join(name)).unwrap();
     }
 
     fn set_file_mode(&self, name: &str, mode: u32) {
-        let path = self.dir.join(name);
+        let path = self.session.project_dir.join(name);
         let mut perms = fs::metadata(&path).unwrap().permissions();
 
         perms.set_mode(mode);
@@ -123,6 +121,6 @@ impl Project {
     }
 
     fn close(&self) {
-        fs::remove_dir_all(&self.dir).unwrap();
+        fs::remove_dir_all(&self.session.project_dir).unwrap();
     }
 }
