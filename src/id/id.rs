@@ -2,6 +2,7 @@ use std::convert::TryInto;
 
 #[derive(Clone, Debug)]
 pub struct Id {
+    // TODO: rename
     pub as_str: String,
     pub as_bytes: [u8; 20],
 }

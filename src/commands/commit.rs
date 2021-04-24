@@ -1,67 +1,85 @@
 use super::{Command, Execution};
 use crate::{errors::RitError, id::Id, objects, repository::Repository, Session};
+use std::fmt;
 
 pub struct Commit {
     session: Session,
     message: String,
+    repo: Repository,
 }
 
-impl Commit {
-    pub fn new(session: Session, message: String) -> Self {
-        Self { session, message }
-    }
+#[derive(Debug)]
+pub struct CommitResult {
+    parent_id: Option<String>,
+    commit_id: String,
+    message: String,
+}
 
-    fn commit<'a>(
-        &'a self,
-        parent_id: &'a Option<String>,
-        root_id: Id,
-        message: &'a str,
-    ) -> objects::Commit {
-        let author = objects::Author::new(&self.session.author_name, &self.session.author_email);
-
-        objects::Commit::new(&parent_id, root_id, author, &message)
-    }
-
-    fn report(&self, parent_id: Option<String>, commit_id: Id) {
-        let root_part = match parent_id {
+impl fmt::Display for CommitResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let root_part = match self.parent_id {
             Some(_) => "",
             None => "(root-commit) ",
         };
 
-        // TODO: Move to bin
-        println!(
-            "[{}{}] {}",
-            root_part,
-            commit_id.as_str,
-            self.message.lines().next().unwrap()
-        );
+        write!(f, "[{}{}] {}", root_part, self.commit_id, self.message)
+    }
+}
+
+impl Commit {
+    pub fn new(session: Session, message: String) -> Self {
+        let repo = Repository::new(session.project_dir.clone());
+
+        Self {
+            session,
+            message,
+            repo,
+        }
+    }
+
+    fn commit<'a>(&'a self, parent_id: &'a Option<String>, root_id: Id) -> Result<Id, RitError> {
+        let author = objects::Author::new(&self.session.author_name, &self.session.author_email);
+
+        let mut commit = objects::Commit::new(&parent_id, root_id, author, &self.message);
+
+        let commit_id = self.repo.database.store(&mut commit)?;
+
+        Ok(commit_id)
+    }
+
+    fn get_root(&mut self) -> Result<objects::Tree, RitError> {
+        self.repo.index.load()?;
+
+        let entries = self.repo.index.entries();
+
+        Ok(objects::Tree::build(entries))
+    }
+
+    fn get_result(&self, parent_id: Option<String>, commit_id: Id) -> CommitResult {
+        CommitResult {
+            parent_id,
+            commit_id: commit_id.as_str,
+            message: self.message.lines().next().unwrap().into(),
+        }
     }
 }
 
 impl Command for Commit {
     fn execute(&mut self) -> Result<Execution, RitError> {
-        let mut repo = Repository::new(self.session.project_dir.clone());
-
-        repo.index.load()?;
-
-        let entries = repo.index.entries();
-
-        let mut root = objects::Tree::build(entries);
+        let mut root = self.get_root()?;
 
         root.traverse(|tree| {
-            let id = repo.database.store(tree).unwrap();
+            let id = self.repo.database.store(tree).unwrap();
+
             tree.id = Some(id);
         });
 
-        let root_id = repo.database.store(&mut root)?;
-        let parent_id = repo.refs.read_head();
+        let root_id = self.repo.database.store(&mut root)?;
+        let parent_id = self.repo.refs.read_head();
+        let commit_id = self.commit(&parent_id, root_id)?;
 
-        let mut commit = self.commit(&parent_id, root_id, &self.message);
-        let commit_id = repo.database.store(&mut commit)?;
-        repo.refs.update_head(&commit_id)?;
+        self.repo.refs.update_head(&commit_id)?;
 
-        self.report(parent_id, commit_id);
-
-        Ok(Execution::Empty)
+        Ok(Execution::Commit(self.get_result(parent_id, commit_id)))
     }
 }

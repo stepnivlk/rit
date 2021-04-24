@@ -52,11 +52,7 @@ repository earlier: remove the file manually to continue.",
     }
 }
 
-fn handle_ok(_execution: rit::Execution) -> i32 {
-    0
-}
-
-fn handle_status_ok(execution: rit::Execution) -> i32 {
+fn handle_ok(execution: rit::Execution) -> i32 {
     match execution {
         rit::Execution::Status(res) => {
             for untracked in res.untracked {
@@ -66,6 +62,11 @@ fn handle_status_ok(execution: rit::Execution) -> i32 {
             for changed in res.changed {
                 println!(" M {}", changed);
             }
+
+            0
+        }
+        rit::Execution::Commit(res) => {
+            println!("{}", res);
 
             0
         }
@@ -95,19 +96,19 @@ fn main() {
         Some("init") => {
             let path = args.next();
 
-            rit::Init::new(session, path).execute().map(handle_ok)
+            rit::Init::new(session, path).execute()
         }
         Some("add") => {
             let paths = args.collect();
 
-            rit::Add::new(session, paths).execute().map(handle_ok)
+            rit::Add::new(session, paths).execute()
         }
         Some("commit") => {
             let message = args.next().unwrap();
 
-            rit::Commit::new(session, message).execute().map(handle_ok)
+            rit::Commit::new(session, message).execute()
         }
-        Some("status") => rit::Status::new(session).execute().map(handle_status_ok),
+        Some("status") => rit::Status::new(session).execute(),
         Some(name) => {
             let err = rit::errors::RitError::UnknownCommand(name.to_string());
 
@@ -116,9 +117,10 @@ fn main() {
         _ => {
             println!("TODO: Help");
 
-            Ok(0)
+            Ok(rit::Execution::Empty)
         }
     }
+    .map(handle_ok)
     .map_err(handle_err);
 
     std::process::exit(match result {

@@ -1,18 +1,15 @@
 use crate::errors::RitError;
 use std::path::PathBuf;
 
-mod init;
-pub use init::Init;
-
-mod commit;
-pub use commit::Commit;
-
 mod add;
-pub use add::Add;
-
+mod commit;
+mod init;
 mod status;
+
+pub use add::Add;
+pub use commit::Commit;
+pub use init::Init;
 pub use status::Status;
-use status::StatusResult;
 
 #[derive(Clone)]
 pub struct Session {
@@ -28,5 +25,6 @@ pub trait Command {
 #[derive(Debug)]
 pub enum Execution {
     Empty,
-    Status(StatusResult),
+    Commit(commit::CommitResult),
+    Status(status::StatusResult),
 }
