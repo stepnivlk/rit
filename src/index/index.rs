@@ -48,10 +48,11 @@ impl Index {
         let file = self.open_index_file();
 
         if let Ok(f) = file {
-            let mut reader = Checksum::new(f);
+            let mut reader = Checksum::new(f)?;
 
-            let count = self.read_header(&mut reader)?;
-            self.read_entries(&mut reader, count)?;
+            let entries_count = self.read_header(&mut reader)?;
+
+            self.read_entries(&mut reader, entries_count)?;
 
             reader.verify_checksum()?;
         };

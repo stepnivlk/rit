@@ -92,7 +92,7 @@ impl Workspace {
             .filter(|path| {
                 !matches!(
                     path.file_name().and_then(|f| f.to_str()),
-                    Some(".git") | Some(".gitignore") | Some("target")
+                    Some(".git") | Some("target")
                 )
             })
     }
