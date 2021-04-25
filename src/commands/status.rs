@@ -1,24 +1,19 @@
 use super::{Command, Execution};
-use crate::{
-    errors::RitError,
-    repository::Repository,
-    workspace::{self, Entry, Stat},
-    Session,
-};
+use crate::{errors::RitError, index, repository::Repository, workspace, Session};
 use std::{collections::HashMap, path::PathBuf};
 
 pub struct Status {
     session: Session,
     repo: Repository,
-    untracked: Vec<Entry>,
-    changed: Vec<Entry>,
-    stats: HashMap<String, Stat>,
+    untracked: Vec<workspace::Entry>,
+    changed: Vec<workspace::Entry>,
+    stats: HashMap<String, workspace::Stat>,
 }
 
 #[derive(Debug)]
 pub struct StatusResult {
-    pub untracked: Vec<Entry>,
-    pub changed: Vec<Entry>,
+    pub untracked: Vec<workspace::Entry>,
+    pub changed: Vec<workspace::Entry>,
 }
 
 impl Status {
@@ -36,15 +31,29 @@ impl Status {
 
     fn detect_workspace_changes(&mut self) {
         for index_entry in self.repo.index.entries() {
-            if let Some(stat) = self.stats.get(&index_entry.pathname) {
-                if !index_entry.matches_stat(stat) {
-                    let absolute_path = self.session.project_dir.join(&index_entry.path);
-                    let workspace_entry = workspace::Entry::new(absolute_path, index_entry.path);
-
+            self.stats
+                .get(&index_entry.pathname)
+                .map(|stat| self.detect_entry_changes(index_entry, stat))
+                .flatten()
+                .map(|workspace_entry| {
                     self.changed.push(workspace_entry);
-                }
-            }
+                });
         }
+    }
+
+    fn detect_entry_changes(
+        &self,
+        index_entry: index::Entry,
+        stat: &workspace::Stat,
+    ) -> Option<workspace::Entry> {
+        if index_entry.matches_stat(stat) {
+            return None;
+        }
+
+        let absolute_path = self.session.project_dir.join(&index_entry.path);
+        let workspace_entry = workspace::Entry::new(absolute_path, index_entry.path);
+
+        Some(workspace_entry)
     }
 
     fn scan_workspace(&mut self) {
@@ -68,7 +77,7 @@ impl Status {
         }
     }
 
-    fn is_trackable_entry(&self, entry: &Entry) -> bool {
+    fn is_trackable_entry(&self, entry: &workspace::Entry) -> bool {
         if !entry.is_dir {
             return !self.repo.index.is_tracked(&entry.relative_path_name);
         }

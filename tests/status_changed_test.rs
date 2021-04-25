@@ -51,3 +51,14 @@ fn it_lists_entries_with_modified_contents() {
         assert_changed(vec!["1.txt", "a/2.txt"], execution);
     });
 }
+
+#[test]
+fn it_lists_entries_with_changed_modes() {
+    filled_project(|project| {
+        project.make_executable("a/2.txt");
+
+        let execution = project.status().unwrap();
+
+        assert_changed(vec!["a/2.txt"], execution);
+    });
+}
