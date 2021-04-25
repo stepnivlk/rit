@@ -36,7 +36,7 @@ pub trait Storable: Object {
         let header = self.header(data.len());
         let header = header.as_bytes();
 
-        let id = id::OneOff::new(header.clone().chain(data));
+        let id = id::OneOff::new(header.chain(data));
 
         let data = header.chain(data);
 

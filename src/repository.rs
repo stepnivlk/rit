@@ -13,7 +13,7 @@ impl Repository {
         let git_path = project_path.join(".git");
 
         Self {
-            database: Database::new(git_path.clone().join("objects")),
+            database: Database::new(git_path.join("objects")),
             index: Index::new(git_path.clone().join("index")),
             refs: Refs::new(git_path),
             workspace: Workspace::new(project_path),

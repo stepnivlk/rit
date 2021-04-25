@@ -1,5 +1,7 @@
+#![allow(dead_code)]
+
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use rit::errors::RitError;
+use rit::{errors::RitError, Command, Session};
 use std::{
     fs::{self, OpenOptions},
     io::prelude::*,
@@ -9,12 +11,22 @@ use std::{
 };
 
 pub struct Project {
-    pub dir: PathBuf,
-    session: rit::Session,
+    session: Session,
 }
 
 impl Project {
     pub fn open<T>(test: T) -> ()
+    where
+        T: FnOnce(&Self) -> () + panic::UnwindSafe,
+    {
+        Self::open_clean(|project| {
+            project.init(None).unwrap();
+
+            test(project)
+        })
+    }
+
+    pub fn open_clean<T>(test: T) -> ()
     where
         T: FnOnce(&Self) -> () + panic::UnwindSafe,
     {
@@ -29,50 +41,58 @@ impl Project {
 
     fn get_dir() -> PathBuf {
         let rng = thread_rng();
-        let s: String = rng.sample_iter(Alphanumeric).take(10).collect();
+        let name: String = rng.sample_iter(Alphanumeric).take(10).collect();
+        let name = format!("./tests/testdir/tmp_dir_{}", name);
 
-        PathBuf::from(format!("./tests/testdir/tmp_dir_{}", s))
+        let path = PathBuf::from(name);
+
+        fs::create_dir(&path).unwrap();
+
+        fs::canonicalize(path).unwrap()
     }
 
-    fn get_session() -> rit::Session {
-        let name = String::from("name");
-        let email = String::from("email");
+    pub fn new() -> Self {
+        let project_dir = Self::get_dir();
 
-        rit::Session::new(Some(name), Some(email)).unwrap()
+        let author_name = String::from("name");
+        let author_email = String::from("email");
+        let session = Session {
+            author_name,
+            author_email,
+            project_dir,
+        };
+
+        Self { session }
     }
 
-    fn new() -> Self {
-        let dir = Self::get_dir();
-        let session = Self::get_session();
+    pub fn init(&self, path: Option<&str>) -> Result<rit::Execution, RitError> {
+        let path = path.map(|p| p.to_string());
 
-        let args = vec!["init".to_string()];
-
-        rit::execute(rit::CommandOpts {
-            dir: dir.clone(),
-            session: session.clone(),
-            args,
-        })
-        .unwrap();
-
-        Self { dir, session }
+        rit::Init::new(self.session.clone(), path).execute()
     }
 
-    pub fn cmd(&self, args: Vec<&str>) -> Result<(), RitError> {
-        rit::execute(rit::CommandOpts {
-            dir: self.dir.clone(),
-            session: self.session.clone(),
-            args: args.iter().map(|arg| arg.to_string()).collect(),
-        })
+    pub fn add(&self, paths: Vec<&str>) -> Result<rit::Execution, RitError> {
+        let paths = paths.iter().map(|path| path.to_string()).collect();
+
+        rit::Add::new(self.session.clone(), paths).execute()
+    }
+
+    pub fn commit(&self, message: &str) -> Result<rit::Execution, RitError> {
+        rit::Commit::new(self.session.clone(), message.to_string()).execute()
+    }
+
+    pub fn status(&self) -> Result<rit::Execution, RitError> {
+        rit::Status::new(self.session.clone()).execute()
     }
 
     pub fn write_file(&self, name: &str, content: &str) {
-        let path = self.dir.join(name);
+        let path = self.session.project_dir.join(name);
         let prefix = path.parent().unwrap();
         fs::create_dir_all(prefix).unwrap();
 
         let mut file = OpenOptions::new()
             .write(true)
-            .create_new(true)
+            .create(true)
             .open(path)
             .unwrap();
 
@@ -80,7 +100,7 @@ impl Project {
     }
 
     pub fn index_entries(&self) -> Vec<(String, u32)> {
-        let mut repo = rit::Repository::new(self.dir.clone());
+        let mut repo = rit::Repository::new(self.session.project_dir.clone());
         repo.index.load().unwrap();
 
         repo.index
@@ -91,12 +111,7 @@ impl Project {
     }
 
     pub fn expected_path(&self, name: &str) -> String {
-        format!(
-            "{}/{}",
-            self.dir.canonicalize().unwrap().to_str().unwrap(),
-            name
-        )
-        .to_string()
+        name.to_string()
     }
 
     pub fn make_executable(&self, name: &str) {
@@ -107,8 +122,16 @@ impl Project {
         self.set_file_mode(name, 0);
     }
 
+    pub fn make_dir(&self, name: &str) {
+        fs::create_dir(self.session.project_dir.join(name)).unwrap();
+    }
+
+    pub fn dir(&self) -> &PathBuf {
+        &self.session.project_dir
+    }
+
     fn set_file_mode(&self, name: &str, mode: u32) {
-        let path = self.dir.join(name);
+        let path = self.session.project_dir.join(name);
         let mut perms = fs::metadata(&path).unwrap().permissions();
 
         perms.set_mode(mode);
@@ -117,6 +140,6 @@ impl Project {
     }
 
     fn close(&self) {
-        fs::remove_dir_all(&self.dir).unwrap();
+        fs::remove_dir_all(&self.session.project_dir).unwrap();
     }
 }

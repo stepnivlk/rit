@@ -1,10 +1,10 @@
-use super::{bytes_to_uint, Checksum, Entry, IndexError};
+use super::{bytes_to_uint32, Checksum, Entry, IndexError};
 use crate::{
     id,
     lockfile::{LockError, Lockfile},
-    workspace::Stat,
+    workspace,
 };
-use bytes::{BufMut, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use std::{
     collections::{HashMap, HashSet},
     fs::{File, OpenOptions},
@@ -47,43 +47,29 @@ impl Index {
 
         let file = self.open_index_file();
 
-        match file {
-            Ok(f) => {
-                let mut reader = Checksum::new(f);
+        if let Ok(f) = file {
+            let mut reader = Checksum::new(f)?;
 
-                let count = self.read_header(&mut reader)?;
-                self.read_entries(&mut reader, count)?;
+            let entries_count = self.read_header(&mut reader)?;
 
-                reader.verify_checksum()?;
-            }
-            Err(_) => {}
+            self.read_entries(&mut reader, entries_count)?;
+
+            reader.verify_checksum()?;
         };
 
         Ok(())
     }
 
-    pub fn add(&mut self, path: PathBuf, id: id::Id, stat: Stat) {
-        let entry = Entry::new(path, id, stat);
+    pub fn is_tracked(&self, pathname: &str) -> bool {
+        self.entries.contains_key(pathname) || self.parents.contains_key(pathname)
+    }
+
+    pub fn add(&mut self, workspace_entry: workspace::Entry, id: id::Id, stat: workspace::Stat) {
+        let entry = Entry::new(workspace_entry, id, stat);
 
         self.discard_conflicts(&entry);
 
-        let parents = entry.parents();
-
-        for parent in parents {
-            let parent_pathname: String = parent.to_string_lossy().into();
-
-            match self.parents.get_mut(&parent_pathname) {
-                Some(contents) => {
-                    contents.insert(entry.pathname.clone());
-                }
-                None => {
-                    let mut contents = HashSet::new();
-                    contents.insert(entry.pathname.clone());
-
-                    self.parents.insert(parent_pathname, contents);
-                }
-            };
-        }
+        self.add_parents(&entry);
 
         self.entries.insert(entry.pathname.clone(), entry);
 
@@ -115,10 +101,11 @@ impl Index {
         let entries = self.entries();
 
         for entry in entries {
-            let data = &entry.data()[..];
+            let data: Bytes = entry.into();
+            let data = &data[..];
 
-            self.lockfile.write(&data[..])?;
-            self.id_builder.add(&data[..]);
+            self.lockfile.write(data)?;
+            self.id_builder.add(data);
         }
 
         let id = self.id_builder.commit();
@@ -160,9 +147,7 @@ impl Index {
 
         let entry = entry.unwrap();
 
-        let parents = entry.parents();
-
-        for parent in parents {
+        for parent in entry.parents() {
             let dirname = parent.to_str().unwrap();
 
             let dir = self.parents.get_mut(dirname);
@@ -181,8 +166,8 @@ impl Index {
         let data = reader.read(HEADER_SIZE)?;
 
         let signature = &data[..4];
-        let version = bytes_to_uint(&data[4..8]);
-        let count = bytes_to_uint(&data[8..12]);
+        let version = bytes_to_uint32(&data[4..8]);
+        let count = bytes_to_uint32(&data[8..12]);
 
         if signature != SIGNATURE {
             let msg = format!(
@@ -205,19 +190,40 @@ impl Index {
 
     fn read_entries(&mut self, reader: &mut Checksum, count: u32) -> Result<(), IndexError> {
         for _ in 0..count {
-            let mut entry = reader.read(ENTRY_MIN_SIZE)?;
+            let mut bytes = reader.read(ENTRY_MIN_SIZE)?;
 
-            while entry.last() != Some(&0x00) {
+            while bytes.last() != Some(&0x00) {
                 let mut chunk = reader.read(8)?;
 
-                entry.append(&mut chunk);
+                bytes.append(&mut chunk);
             }
 
-            let entry = Entry::parse(entry);
+            let entry = Entry::from(bytes);
+
+            self.add_parents(&entry);
+
             self.entries.insert(entry.pathname.clone(), entry);
         }
 
         Ok(())
+    }
+
+    fn add_parents(&mut self, entry: &Entry) {
+        for parent in entry.parents() {
+            let parent_pathname: String = parent.to_string_lossy().into();
+
+            match self.parents.get_mut(&parent_pathname) {
+                Some(contents) => {
+                    contents.insert(entry.pathname.clone());
+                }
+                None => {
+                    let mut contents = HashSet::new();
+                    contents.insert(entry.pathname.clone());
+
+                    self.parents.insert(parent_pathname, contents);
+                }
+            };
+        }
     }
 
     fn clear(&mut self) {
@@ -248,7 +254,7 @@ impl Index {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{id::Id, workspace::Metadata};
+    use crate::id::Id;
 
     fn get_index() -> Index {
         let tmp_path = std::env::current_dir().unwrap().join("tmp/");
@@ -264,25 +270,29 @@ mod tests {
         ])
     }
 
-    fn get_stat() -> Stat {
-        Stat {
-            is_executable: false,
-            metadata: Metadata {
-                ctime: 1,
-                ctime_nsec: 2,
-                mtime: 3,
-                mtime_nsec: 4,
-                dev: 5,
-                ino: 6,
-                mode: 7,
-                uid: 8,
-                gid: 9,
-                size: 10,
-            },
+    fn get_stat() -> workspace::Stat {
+        workspace::Stat {
+            ctime: 1,
+            ctime_nsec: 2,
+            mtime: 3,
+            mtime_nsec: 4,
+            dev: 5,
+            ino: 6,
+            mode: 7,
+            uid: 8,
+            gid: 9,
+            size: 10,
         }
     }
 
-    fn map_entries<'a>(entries: &'a Vec<Entry>) -> Vec<&'a str> {
+    fn get_workspace_entry(path: &str) -> workspace::Entry {
+        let absolute_path = PathBuf::from(path);
+        let relative_path = PathBuf::from(path);
+
+        workspace::Entry::new(absolute_path, relative_path)
+    }
+
+    fn map_entries(entries: &Vec<Entry>) -> Vec<&str> {
         entries
             .iter()
             .map(|entry| &entry.pathname[..])
@@ -293,7 +303,7 @@ mod tests {
     fn it_adds_a_single_file() {
         let mut index = get_index();
 
-        index.add(PathBuf::from("alice.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("alice.txt"), get_id(), get_stat());
 
         let entries = index.entries();
         let entries = map_entries(&entries);
@@ -305,10 +315,14 @@ mod tests {
     fn it_replaces_a_file_with_a_directory() {
         let mut index = get_index();
 
-        index.add(PathBuf::from("alice.txt"), get_id(), get_stat());
-        index.add(PathBuf::from("bob.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("alice.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("bob.txt"), get_id(), get_stat());
 
-        index.add(PathBuf::from("alice.txt/nested.txt"), get_id(), get_stat());
+        index.add(
+            get_workspace_entry("alice.txt/nested.txt"),
+            get_id(),
+            get_stat(),
+        );
 
         let entries = index.entries();
         let entries = map_entries(&entries);
@@ -320,10 +334,10 @@ mod tests {
     fn it_replaces_a_directory_with_a_file() {
         let mut index = get_index();
 
-        index.add(PathBuf::from("alice.txt"), get_id(), get_stat());
-        index.add(PathBuf::from("nested/bob.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("alice.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("nested/bob.txt"), get_id(), get_stat());
 
-        index.add(PathBuf::from("nested"), get_id(), get_stat());
+        index.add(get_workspace_entry("nested"), get_id(), get_stat());
 
         let entries = index.entries();
         let entries = map_entries(&entries);
@@ -335,15 +349,15 @@ mod tests {
     fn it_recursively_replaces_a_directory_with_a_file() {
         let mut index = get_index();
 
-        index.add(PathBuf::from("alice.txt"), get_id(), get_stat());
-        index.add(PathBuf::from("nested/bob.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("alice.txt"), get_id(), get_stat());
+        index.add(get_workspace_entry("nested/bob.txt"), get_id(), get_stat());
         index.add(
-            PathBuf::from("nested/inner/claire.txt"),
+            get_workspace_entry("nested/inner/claire.txt"),
             get_id(),
             get_stat(),
         );
 
-        index.add(PathBuf::from("nested"), get_id(), get_stat());
+        index.add(get_workspace_entry("nested"), get_id(), get_stat());
 
         let entries = index.entries();
         let entries = map_entries(&entries);

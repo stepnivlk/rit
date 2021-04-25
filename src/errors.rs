@@ -10,7 +10,7 @@ pub enum RitError {
     Refs(RefsError),
     MissingFile(String),
     PermissionDenied(String),
-    UnknownCommand,
+    UnknownCommand(String),
 }
 
 impl fmt::Display for RitError {

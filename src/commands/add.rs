@@ -1,69 +1,67 @@
-use super::{Command, CommandOpts};
-use crate::{errors::RitError, objects, repository::Repository};
-use std::path::PathBuf;
+use super::{Command, Execution};
+use crate::{errors::RitError, objects, repository::Repository, workspace::Entry, Session};
 
 pub struct Add {
-    opts: CommandOpts,
+    paths: Vec<String>,
     repo: Repository,
 }
 
 impl Add {
-    fn expanded_paths(&mut self) -> Result<Vec<PathBuf>, RitError> {
-        let mut files: Vec<PathBuf> = vec![];
+    pub fn new(session: Session, paths: Vec<String>) -> Self {
+        let repo = Repository::new(session.project_dir);
+
+        Self { paths, repo }
+    }
+
+    fn expanded_entries(&mut self) -> Result<Vec<Entry>, RitError> {
+        let mut entries: Vec<Entry> = vec![];
 
         // TODO: -clone
-        for path in self.opts.args.clone() {
-            let path = self.repo.workspace.expand_path(&path);
-            let path = path.map_err(|err| {
+        for path in self.paths.clone() {
+            let path = self.repo.workspace.expand_path(&path).map_err(|err| {
                 self.repo.index.release_lock().unwrap();
 
                 err
             })?;
 
-            for file in self.repo.workspace.list_files(Some(&path)) {
-                files.push(file);
+            for entry in self.repo.workspace.list_files(Some(&path)) {
+                entries.push(entry);
             }
         }
 
-        Ok(files)
+        Ok(entries)
     }
 
-    fn add_to_index(&mut self, path: PathBuf) -> Result<(), RitError> {
-        let data = self.repo.workspace.read_file(&path).map_err(|err| {
+    fn add_to_index(&mut self, entry: Entry) -> Result<(), RitError> {
+        let file = self.repo.workspace.read_file(&entry).map_err(|err| {
             self.repo.index.release_lock().unwrap();
 
             err
         })?;
-        let stat = self.repo.workspace.stat_file(&data);
+        let stat = self.repo.workspace.stat_file(&file);
 
-        let mut blob = objects::Blob::new(data);
+        let mut blob = objects::Blob::new(file);
 
         let blob_id = self.repo.database.store(&mut blob).unwrap();
 
-        self.repo.index.add(path, blob_id, stat);
+        self.repo.index.add(entry, blob_id, stat);
 
         Ok(())
     }
 }
 
 impl Command for Add {
-    fn new(opts: CommandOpts) -> Self {
-        let repo = Repository::new(opts.dir.clone());
-
-        Self { opts, repo }
-    }
-
-    fn execute(&mut self) -> Result<(), RitError> {
+    fn execute(&mut self) -> Result<Execution, RitError> {
         self.repo.index.load_for_update()?;
 
-        let expanded_paths = self.expanded_paths()?;
+        let expanded_entries = self.expanded_entries()?;
 
-        for path in expanded_paths {
-            self.add_to_index(path)?;
+        for entry in expanded_entries {
+            self.add_to_index(entry)?;
         }
 
         self.repo.index.write_updates()?;
 
-        Ok(())
+        Ok(Execution::Empty)
     }
 }
