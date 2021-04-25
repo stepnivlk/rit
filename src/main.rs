@@ -80,9 +80,9 @@ fn get_session() -> rit::Session {
     let author_email = env::var("GIT_AUTHOR_EMAIL").unwrap();
 
     rit::Session {
-        project_dir,
         author_name,
         author_email,
+        project_dir,
     }
 }
 

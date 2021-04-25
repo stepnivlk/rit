@@ -5,6 +5,7 @@ use crate::{
     workspace,
 };
 use bytes::{BufMut, Bytes, BytesMut};
+use sorted_vec::SortedSet;
 use std::{
     collections::{HashMap, HashSet},
     fs::{File, OpenOptions},
@@ -20,9 +21,33 @@ const ENTRY_MIN_SIZE: usize = 64;
 pub struct Index {
     lockfile: Lockfile,
     entries: HashMap<String, Entry>,
+    entry_path_names: SortedSet<String>,
     parents: HashMap<String, HashSet<String>>,
     id_builder: id::Additive,
     is_changed: bool,
+}
+
+pub struct IndexIter<'a> {
+    entries: &'a HashMap<String, Entry>,
+    entry_path_names: &'a SortedSet<String>,
+    cur: usize,
+}
+
+impl<'a> Iterator for IndexIter<'a> {
+    type Item = &'a Entry;
+
+    fn next(&mut self) -> Option<&'a Entry> {
+        let name = self.entry_path_names.get(self.cur);
+
+        match name {
+            Some(n) => {
+                self.cur += 1;
+
+                self.entries.get(n)
+            }
+            _ => None,
+        }
+    }
 }
 
 impl Index {
@@ -30,9 +55,18 @@ impl Index {
         Self {
             lockfile: Lockfile::new(path),
             entries: HashMap::new(),
+            entry_path_names: SortedSet::new(),
             parents: HashMap::new(),
             id_builder: id::Additive::new(),
             is_changed: false,
+        }
+    }
+
+    pub fn iter(&mut self) -> IndexIter {
+        IndexIter {
+            entries: &self.entries,
+            entry_path_names: &self.entry_path_names,
+            cur: 0,
         }
     }
 
@@ -71,6 +105,7 @@ impl Index {
 
         self.add_parents(&entry);
 
+        self.entry_path_names.insert(entry.pathname.clone());
         self.entries.insert(entry.pathname.clone(), entry);
 
         self.is_changed = true;
@@ -98,9 +133,7 @@ impl Index {
 
         self.write_header()?;
 
-        let entries = self.entries();
-
-        for entry in entries {
+        for entry in self.entries() {
             let data: Bytes = entry.into();
             let data = &data[..];
 
@@ -122,6 +155,13 @@ impl Index {
         self.lockfile.rollback()
     }
 
+    pub fn update_entry_stat(&mut self, pathname: &str, stat: &workspace::Stat) {
+        if let Some(entry) = self.entries.get_mut(pathname) {
+            entry.update_stat(stat);
+            self.is_changed = true;
+        }
+    }
+
     fn discard_conflicts(&mut self, entry: &Entry) {
         let parents = entry.parents();
 
@@ -139,6 +179,7 @@ impl Index {
     }
 
     fn remove_entry(&mut self, pathname: &str) {
+        self.entry_path_names.remove_item(&pathname.to_string());
         let entry = self.entries.remove(pathname);
 
         if entry.is_none() {
@@ -202,6 +243,7 @@ impl Index {
 
             self.add_parents(&entry);
 
+            self.entry_path_names.insert(entry.pathname.clone());
             self.entries.insert(entry.pathname.clone(), entry);
         }
 

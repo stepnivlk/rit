@@ -62,3 +62,25 @@ fn it_lists_entries_with_changed_modes() {
         assert_changed(vec!["a/2.txt"], execution);
     });
 }
+
+#[test]
+fn it_lists_modified_entries_with_unchanged_size() {
+    filled_project(|project| {
+        project.write_file("a/b/3.txt", "hello");
+
+        let execution = project.status().unwrap();
+
+        assert_changed(vec!["a/b/3.txt"], execution);
+    });
+}
+
+#[test]
+fn it_lists_nothing_when_the_file_is_touched() {
+    filled_project(|project| {
+        project.touch("1.txt");
+
+        let execution = project.status().unwrap();
+
+        assert_changed(vec![], execution);
+    });
+}

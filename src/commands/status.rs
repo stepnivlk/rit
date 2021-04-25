@@ -1,5 +1,11 @@
 use super::{Command, Execution};
-use crate::{errors::RitError, index, repository::Repository, workspace, Session};
+use crate::{
+    errors::RitError,
+    index,
+    objects::{Blob, Storable},
+    repository::Repository,
+    workspace, Session,
+};
 use std::{collections::HashMap, path::PathBuf};
 
 pub struct Status {
@@ -14,6 +20,12 @@ pub struct Status {
 pub struct StatusResult {
     pub untracked: Vec<workspace::Entry>,
     pub changed: Vec<workspace::Entry>,
+}
+
+enum EntryChange {
+    Changed,
+    UpdateStat,
+    Unchanged,
 }
 
 impl Status {
@@ -31,29 +43,53 @@ impl Status {
 
     fn detect_workspace_changes(&mut self) {
         for index_entry in self.repo.index.entries() {
-            self.stats
-                .get(&index_entry.pathname)
-                .map(|stat| self.detect_entry_changes(index_entry, stat))
-                .flatten()
-                .map(|workspace_entry| {
+            let stat = self.stats.get(&index_entry.pathname).unwrap();
+            let workspace_entry = self.build_workspace_entry(&index_entry);
+
+            match self.detect_entry_changes(&index_entry, &workspace_entry, stat) {
+                EntryChange::Changed => {
                     self.changed.push(workspace_entry);
-                });
+                }
+                EntryChange::UpdateStat => {
+                    self.repo
+                        .index
+                        .update_entry_stat(&index_entry.pathname, stat);
+                }
+                _ => {}
+            };
         }
     }
 
     fn detect_entry_changes(
         &self,
-        index_entry: index::Entry,
+        index_entry: &index::Entry,
+        workspace_entry: &workspace::Entry,
         stat: &workspace::Stat,
-    ) -> Option<workspace::Entry> {
-        if index_entry.matches_stat(stat) {
-            return None;
+    ) -> EntryChange {
+        if !index_entry.matches_stat(stat) {
+            return EntryChange::Changed;
         }
 
-        let absolute_path = self.session.project_dir.join(&index_entry.path);
-        let workspace_entry = workspace::Entry::new(absolute_path, index_entry.path);
+        if index_entry.matches_times(stat) {
+            return EntryChange::Unchanged;
+        }
 
-        Some(workspace_entry)
+        let file = self.repo.workspace.read_file(&workspace_entry).unwrap();
+        let mut blob = Blob::new(file);
+
+        let id = blob.store(|(_, _)| {}).unwrap();
+
+        if index_entry.id == id {
+            return EntryChange::UpdateStat;
+        }
+
+        EntryChange::Changed
+    }
+
+    fn build_workspace_entry(&self, index_entry: &index::Entry) -> workspace::Entry {
+        let absolute_path = self.session.project_dir.join(&index_entry.path);
+
+        workspace::Entry::new(absolute_path, index_entry.path.clone())
     }
 
     fn scan_workspace(&mut self) {
@@ -94,10 +130,12 @@ impl Status {
 
 impl Command for Status {
     fn execute(&mut self) -> Result<Execution, RitError> {
-        self.repo.index.load()?;
+        self.repo.index.load_for_update()?;
 
         self.scan_workspace();
         self.detect_workspace_changes();
+
+        self.repo.index.write_updates()?;
 
         // TODO: -clone
         Ok(Execution::Status(StatusResult {

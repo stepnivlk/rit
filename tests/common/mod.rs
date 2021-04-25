@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use filetime::FileTime;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rit::{errors::RitError, Command, Session};
 use std::{
@@ -128,6 +129,13 @@ impl Project {
 
     pub fn dir(&self) -> &PathBuf {
         &self.session.project_dir
+    }
+
+    pub fn touch(&self, name: &str) {
+        let path = self.session.project_dir.join(name);
+        let now = FileTime::now();
+
+        filetime::set_file_times(path, now, now).unwrap();
     }
 
     fn set_file_mode(&self, name: &str, mode: u32) {
