@@ -12,14 +12,16 @@ pub struct Status {
     session: Session,
     repo: Repository,
     untracked: Vec<workspace::Entry>,
-    changed: Vec<workspace::Entry>,
+    modified: Vec<workspace::Entry>,
+    deleted: Vec<workspace::Entry>,
     stats: HashMap<String, workspace::Stat>,
 }
 
 #[derive(Debug)]
 pub struct StatusResult {
     pub untracked: Vec<workspace::Entry>,
-    pub changed: Vec<workspace::Entry>,
+    pub modified: Vec<workspace::Entry>,
+    pub deleted: Vec<workspace::Entry>,
 }
 
 enum EntryChange {
@@ -36,27 +38,32 @@ impl Status {
             session,
             repo,
             untracked: vec![],
-            changed: vec![],
+            modified: vec![],
+            deleted: vec![],
             stats: HashMap::new(),
         }
     }
 
     fn detect_workspace_changes(&mut self) {
         for index_entry in self.repo.index.entries() {
-            let stat = self.stats.get(&index_entry.pathname).unwrap();
             let workspace_entry = self.build_workspace_entry(&index_entry);
 
-            match self.detect_entry_changes(&index_entry, &workspace_entry, stat) {
-                EntryChange::Changed => {
-                    self.changed.push(workspace_entry);
+            match self.stats.get(&index_entry.pathname) {
+                Some(stat) => {
+                    match self.detect_entry_changes(&index_entry, &workspace_entry, stat) {
+                        EntryChange::Changed => {
+                            self.modified.push(workspace_entry);
+                        }
+                        EntryChange::UpdateStat => {
+                            self.repo
+                                .index
+                                .update_entry_stat(&index_entry.pathname, stat);
+                        }
+                        _ => {}
+                    };
                 }
-                EntryChange::UpdateStat => {
-                    self.repo
-                        .index
-                        .update_entry_stat(&index_entry.pathname, stat);
-                }
-                _ => {}
-            };
+                None => self.deleted.push(workspace_entry),
+            }
         }
     }
 
@@ -140,7 +147,8 @@ impl Command for Status {
         // TODO: -clone
         Ok(Execution::Status(StatusResult {
             untracked: self.untracked.clone(),
-            changed: self.changed.clone(),
+            modified: self.modified.clone(),
+            deleted: self.deleted.clone(),
         }))
     }
 }

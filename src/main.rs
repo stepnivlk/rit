@@ -59,8 +59,12 @@ fn handle_ok(execution: rit::Execution) -> i32 {
                 println!("?? {}", untracked);
             }
 
-            for changed in res.changed {
-                println!(" M {}", changed);
+            for modified in res.modified {
+                println!(" M {}", modified);
+            }
+
+            for deleted in res.deleted {
+                println!(" D {}", deleted);
             }
 
             0

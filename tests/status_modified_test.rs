@@ -1,10 +1,12 @@
 mod common;
 
+use common::filled_project;
+
 fn assert_changed(expected: Vec<&str>, execution: rit::Execution) {
     match execution {
         rit::Execution::Status(res) => {
             let names: Vec<String> = res
-                .changed
+                .modified
                 .iter()
                 .map(|entry| format!("{}", entry))
                 .collect();
@@ -13,22 +15,6 @@ fn assert_changed(expected: Vec<&str>, execution: rit::Execution) {
         }
         _ => assert!(false),
     }
-}
-
-fn filled_project<T>(test: T)
-where
-    T: FnOnce(&common::Project) -> () + std::panic::UnwindSafe,
-{
-    common::Project::open(|project| {
-        project.write_file("1.txt", "one");
-        project.write_file("a/2.txt", "two");
-        project.write_file("a/b/3.txt", "three");
-
-        project.add(vec!["."]).unwrap();
-        project.commit("message").unwrap();
-
-        test(&project);
-    });
 }
 
 #[test]
