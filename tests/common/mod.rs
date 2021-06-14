@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use filetime::FileTime;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rit::{errors::RitError, Command, Session};
 use std::{
@@ -9,6 +10,22 @@ use std::{
     panic,
     path::PathBuf,
 };
+
+pub fn filled_project<T>(test: T)
+where
+    T: FnOnce(&Project) -> () + std::panic::UnwindSafe,
+{
+    Project::open(|project| {
+        project.write_file("1.txt", "one");
+        project.write_file("a/2.txt", "two");
+        project.write_file("a/b/3.txt", "three");
+
+        project.add(vec!["."]).unwrap();
+        project.commit("message").unwrap();
+
+        test(&project);
+    });
+}
 
 pub struct Project {
     session: Session,
@@ -34,7 +51,7 @@ impl Project {
 
         let result = panic::catch_unwind(|| test(&project));
 
-        project.close();
+        // project.close();
 
         assert!(result.is_ok())
     }
@@ -128,6 +145,23 @@ impl Project {
 
     pub fn dir(&self) -> &PathBuf {
         &self.session.project_dir
+    }
+
+    pub fn touch(&self, name: &str) {
+        let path = self.session.project_dir.join(name);
+        let now = FileTime::now();
+
+        filetime::set_file_times(path, now, now).unwrap();
+    }
+
+    pub fn delete(&self, name: &str) {
+        let path = self.session.project_dir.join(name);
+
+        if path.is_dir() {
+            fs::remove_dir_all(path).unwrap();
+        } else {
+            fs::remove_file(path).unwrap();
+        }
     }
 
     fn set_file_mode(&self, name: &str, mode: u32) {

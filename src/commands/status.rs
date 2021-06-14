@@ -1,24 +1,33 @@
 use super::{Command, Execution};
 use crate::{
     errors::RitError,
+    index,
+    objects::{Blob, Storable},
     repository::Repository,
-    workspace::{self, Entry, Stat},
-    Session,
+    workspace, Session,
 };
 use std::{collections::HashMap, path::PathBuf};
 
 pub struct Status {
     session: Session,
     repo: Repository,
-    untracked: Vec<Entry>,
-    changed: Vec<Entry>,
-    stats: HashMap<String, Stat>,
+    untracked: Vec<workspace::Entry>,
+    modified: Vec<workspace::Entry>,
+    deleted: Vec<workspace::Entry>,
+    stats: HashMap<String, workspace::Stat>,
 }
 
 #[derive(Debug)]
 pub struct StatusResult {
-    pub untracked: Vec<Entry>,
-    pub changed: Vec<Entry>,
+    pub untracked: Vec<workspace::Entry>,
+    pub modified: Vec<workspace::Entry>,
+    pub deleted: Vec<workspace::Entry>,
+}
+
+enum EntryChange {
+    Changed,
+    UpdateStat,
+    Unchanged,
 }
 
 impl Status {
@@ -29,22 +38,65 @@ impl Status {
             session,
             repo,
             untracked: vec![],
-            changed: vec![],
+            modified: vec![],
+            deleted: vec![],
             stats: HashMap::new(),
         }
     }
 
     fn detect_workspace_changes(&mut self) {
         for index_entry in self.repo.index.entries() {
-            if let Some(stat) = self.stats.get(&index_entry.pathname) {
-                if !index_entry.matches_stat(stat) {
-                    let absolute_path = self.session.project_dir.join(&index_entry.path);
-                    let workspace_entry = workspace::Entry::new(absolute_path, index_entry.path);
+            let workspace_entry = self.build_workspace_entry(&index_entry);
 
-                    self.changed.push(workspace_entry);
+            match self.stats.get(&index_entry.pathname) {
+                Some(stat) => {
+                    match self.detect_entry_changes(&index_entry, &workspace_entry, stat) {
+                        EntryChange::Changed => {
+                            self.modified.push(workspace_entry);
+                        }
+                        EntryChange::UpdateStat => {
+                            self.repo
+                                .index
+                                .update_entry_stat(&index_entry.pathname, stat);
+                        }
+                        _ => {}
+                    };
                 }
+                None => self.deleted.push(workspace_entry),
             }
         }
+    }
+
+    fn detect_entry_changes(
+        &self,
+        index_entry: &index::Entry,
+        workspace_entry: &workspace::Entry,
+        stat: &workspace::Stat,
+    ) -> EntryChange {
+        if !index_entry.matches_stat(stat) {
+            return EntryChange::Changed;
+        }
+
+        if index_entry.matches_times(stat) {
+            return EntryChange::Unchanged;
+        }
+
+        let file = self.repo.workspace.read_file(&workspace_entry).unwrap();
+        let mut blob = Blob::new(file);
+
+        let id = blob.store(|(_, _)| {}).unwrap();
+
+        if index_entry.id == id {
+            return EntryChange::UpdateStat;
+        }
+
+        EntryChange::Changed
+    }
+
+    fn build_workspace_entry(&self, index_entry: &index::Entry) -> workspace::Entry {
+        let absolute_path = self.session.project_dir.join(&index_entry.path);
+
+        workspace::Entry::new(absolute_path, index_entry.path.clone())
     }
 
     fn scan_workspace(&mut self) {
@@ -68,7 +120,7 @@ impl Status {
         }
     }
 
-    fn is_trackable_entry(&self, entry: &Entry) -> bool {
+    fn is_trackable_entry(&self, entry: &workspace::Entry) -> bool {
         if !entry.is_dir {
             return !self.repo.index.is_tracked(&entry.relative_path_name);
         }
@@ -85,15 +137,18 @@ impl Status {
 
 impl Command for Status {
     fn execute(&mut self) -> Result<Execution, RitError> {
-        self.repo.index.load()?;
+        self.repo.index.load_for_update()?;
 
         self.scan_workspace();
         self.detect_workspace_changes();
 
+        self.repo.index.write_updates()?;
+
         // TODO: -clone
         Ok(Execution::Status(StatusResult {
             untracked: self.untracked.clone(),
-            changed: self.changed.clone(),
+            modified: self.modified.clone(),
+            deleted: self.deleted.clone(),
         }))
     }
 }

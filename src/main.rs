@@ -59,8 +59,12 @@ fn handle_ok(execution: rit::Execution) -> i32 {
                 println!("?? {}", untracked);
             }
 
-            for changed in res.changed {
-                println!(" M {}", changed);
+            for modified in res.modified {
+                println!(" M {}", modified);
+            }
+
+            for deleted in res.deleted {
+                println!(" D {}", deleted);
             }
 
             0
@@ -80,9 +84,9 @@ fn get_session() -> rit::Session {
     let author_email = env::var("GIT_AUTHOR_EMAIL").unwrap();
 
     rit::Session {
-        project_dir,
         author_name,
         author_email,
+        project_dir,
     }
 }
 

@@ -12,7 +12,7 @@ pub struct Entry {
     pub id: id::Id,
     pub path: PathBuf,
     pub pathname: String,
-    stat: workspace::Stat,
+    pub stat: workspace::Stat,
     pub mode: u32,
     flags: usize,
 }
@@ -23,11 +23,7 @@ impl Entry {
             id,
             path: workspace_entry.relative_path,
             pathname: workspace_entry.relative_path_name,
-            mode: if stat.is_executable() {
-                EXECUTABLE_MODE
-            } else {
-                REGULAR_MODE
-            },
+            mode: Self::mode_for_stat(&stat),
             flags: if workspace_entry.len < MAX_PATH_SIZE {
                 workspace_entry.len
             } else {
@@ -37,8 +33,38 @@ impl Entry {
         }
     }
 
+    fn mode_for_stat(stat: &workspace::Stat) -> u32 {
+        if stat.is_executable() {
+            EXECUTABLE_MODE
+        } else {
+            REGULAR_MODE
+        }
+    }
+
+    pub fn update_stat(&mut self, stat: &workspace::Stat) {
+        self.stat.ctime = stat.ctime;
+        self.stat.ctime_nsec = stat.ctime_nsec;
+        self.stat.mtime = stat.mtime;
+        self.stat.mtime_nsec = stat.mtime_nsec;
+        self.stat.dev = stat.dev;
+        self.stat.ino = stat.ino;
+        self.stat.mode = stat.mode;
+        self.stat.uid = stat.uid;
+        self.stat.gid = stat.gid;
+        self.stat.size = stat.size;
+
+        self.mode = Self::mode_for_stat(stat);
+    }
+
     pub fn matches_stat(&self, stat: &workspace::Stat) -> bool {
-        self.stat.size == stat.size
+        self.mode == Self::mode_for_stat(&stat) && self.stat.size == stat.size
+    }
+
+    pub fn matches_times(&self, stat: &workspace::Stat) -> bool {
+        self.stat.ctime == stat.ctime
+            && self.stat.ctime_nsec == stat.ctime_nsec
+            && self.stat.mtime == stat.mtime
+            && self.stat.mtime_nsec == stat.mtime_nsec
     }
 
     pub fn parents(&self) -> Vec<PathBuf> {

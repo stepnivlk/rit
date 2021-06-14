@@ -21,3 +21,9 @@ impl Id {
         }
     }
 }
+
+impl PartialEq for Id {
+    fn eq(&self, other: &Id) -> bool {
+        self.as_bytes == other.as_bytes
+    }
+}

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 mod common;
 
 fn get_entry_names(dir: PathBuf) -> Vec<String> {
-    fs::read_dir(dir)
+    let mut names: Vec<String> = fs::read_dir(dir)
         .unwrap()
         .map(|entry| {
             entry
@@ -15,7 +15,11 @@ fn get_entry_names(dir: PathBuf) -> Vec<String> {
                 .to_string_lossy()
                 .to_string()
         })
-        .collect()
+        .collect();
+
+    names.sort();
+
+    names
 }
 
 #[test]

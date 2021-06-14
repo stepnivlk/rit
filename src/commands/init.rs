@@ -27,7 +27,6 @@ impl Init {
 impl Command for Init {
     fn execute(&mut self) -> Result<Execution, RitError> {
         let git_path = self.git_path();
-        dbg!(&git_path);
 
         for dir in &["objects", "refs"] {
             fs::create_dir_all(git_path.join(dir))?;

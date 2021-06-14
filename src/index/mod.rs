@@ -6,7 +6,7 @@ mod index;
 use checksum::Checksum;
 pub use entry::Entry;
 pub use errors::IndexError;
-pub use index::Index;
+pub use index::{Index, IndexIter};
 
 fn bytes_to_uint32(bytes: &[u8]) -> u32 {
     let mut num = [0u8; 4];
