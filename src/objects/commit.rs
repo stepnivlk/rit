@@ -3,7 +3,7 @@ use crate::{
     objects::{Author, Object, Storable},
 };
 use bytes::{BufMut, Bytes, BytesMut};
-use std::fmt;
+use std::{fmt, slice::Iter};
 
 pub struct Commit<'a> {
     parent: &'a Option<String>,
@@ -67,3 +67,12 @@ impl<'a> Object for Commit<'a> {
 }
 
 impl<'a> Storable for Commit<'a> {}
+
+impl<'a> From<Iter<'_, u8>> for Commit<'a> {
+    fn from(iter: Iter<u8>) -> Self {
+        let parsed = String::from_utf8_lossy(iter.as_ref());
+        dbg!(&parsed);
+
+        unimplemented!()
+    }
+}

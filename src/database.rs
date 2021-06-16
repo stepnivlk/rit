@@ -1,5 +1,5 @@
 use crate::{id, objects};
-use libflate::zlib::Encoder;
+use libflate::zlib::{Encoder, Decoder};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{
     fs::{File, OpenOptions},
@@ -27,9 +27,56 @@ impl Database {
         Ok(id)
     }
 
+    pub fn load(&self, id: &str) {
+        self.read_object(id);
+    }
+
+    fn read_object(&self, id: &str) {
+        let (_, object_path) = self.get_object_paths(id);
+
+        let bytes = std::fs::read(object_path).unwrap();
+
+        let mut decoder = Decoder::new(&bytes[..]).unwrap();
+
+        let mut buf = Vec::new();
+
+        decoder.read_to_end(&mut buf).unwrap();
+
+        let mut decoded_iter = buf.iter();
+
+        let mut object_type: Vec<u8> = vec![];
+        let mut size: Vec<u8> = vec![];
+
+        while let Some(byte) = decoded_iter.next() {
+            if byte != &b' ' {
+                object_type.push(*byte);
+            } else {
+                break;
+            }
+        }
+
+        while let Some(byte) = decoded_iter.next() {
+            if byte != &b'\0' {
+                size.push(*byte);
+            } else {
+                break;
+            }
+        }
+
+        let object_type = String::from_utf8_lossy(&object_type);
+        dbg!(&object_type);
+        dbg!(&size);
+
+        match &object_type[..] {
+            "commit" => {
+                let obj = objects::Commit::from(decoded_iter);
+            }
+            _ => panic!()
+        }
+    }
+
     fn write_object<C: Read>(&self, id: &str, mut content: C) -> Result<(), io::Error> {
-        let dir_path = self.path.join(&id[0..2]);
-        let object_path = dir_path.join(&id[2..]);
+        let (dir_path, object_path) = self.get_object_paths(id);
 
         if object_path.exists() {
             return Ok(());
@@ -63,5 +110,12 @@ impl Database {
         let s: String = rng.sample_iter(Alphanumeric).take(6).collect();
 
         format!("tmp_obj_{}", s)
+    }
+
+    fn get_object_paths(&self, id: &str) -> (PathBuf, PathBuf) {
+        let dir_path = self.path.join(&id[0..2]);
+        let object_path = dir_path.join(&id[2..]);
+
+        (dir_path, object_path)
     }
 }

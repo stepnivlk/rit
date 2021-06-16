@@ -2,11 +2,7 @@ use crate::{
     id::Id,
     lockfile::{LockError, Lockfile},
 };
-use std::{
-    fmt, fs,
-    io::{self, prelude::*},
-    path::PathBuf,
-};
+use std::{fmt, fs, io::{self, BufReader, prelude::*}, path::PathBuf};
 
 #[derive(Debug)]
 pub struct RefsError;
@@ -47,12 +43,13 @@ impl Refs {
         Ok(())
     }
 
+    // TODO:
     pub fn read_head(&self) -> Option<String> {
-        let file = fs::File::open(self.head_path()).ok();
-        let mut head = String::new();
+        let file = fs::File::open(self.head_path()).unwrap();
 
-        file.and_then(|mut f| f.read_to_string(&mut head).ok())
-            .map(|_| head)
+        let reader = BufReader::new(file);
+
+        reader.lines().next().unwrap().ok()
     }
 
     fn head_path(&self) -> PathBuf {
