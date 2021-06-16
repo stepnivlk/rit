@@ -55,12 +55,12 @@ repository earlier: remove the file manually to continue.",
 fn handle_ok(execution: rit::Execution) -> i32 {
     match execution {
         rit::Execution::Status(res) => {
-            for untracked in res.untracked {
-                println!("?? {}", untracked);
-            }
-
             for modified in res.modified {
                 println!(" M {}", modified);
+            }
+
+            for untracked in res.untracked {
+                println!("?? {}", untracked);
             }
 
             for deleted in res.deleted {

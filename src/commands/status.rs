@@ -142,6 +142,13 @@ impl Command for Status {
         self.scan_workspace();
         self.detect_workspace_changes();
 
+        let head_id = self.repo.refs.read_head();
+        dbg!(&head_id);
+
+        head_id.map(|id| {
+            self.repo.database.load(&id);
+        });
+
         self.repo.index.write_updates()?;
 
         // TODO: -clone
